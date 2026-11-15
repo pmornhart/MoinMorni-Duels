@@ -1,0 +1,48 @@
+name: MoinMorniDuels
+version: '${project.version}'
+main: de.moinmorni.duels.DuelsPlugin
+api-version: '1.21'
+description: Duels für das MoinMorni-Netzwerk – 1 gegen 1 und 2 gegen 2, Klassisch, Modern und Fähigkeiten.
+authors: [MoinMorni]
+website: https://moinmorni.net
+# Läuft mit dem Netzwerk-Plugin (Sprache, Party, Statistik) und auch allein.
+softdepend: [MoinMorni]
+
+commands:
+  duel:
+    description: Jemanden zum Duell herausfordern / Herausforderung annehmen oder ablehnen
+    usage: /duel <spieler> [klassisch|modern|fähigkeiten] · /duel annehmen|ablehnen [spieler]
+    aliases: [duell, herausfordern]
+  spectate:
+    description: Einem Kampf zuschauen
+    usage: /spectate <spieler>
+    aliases: [zuschauen, spec]
+  verlassen:
+    description: Warteschlange, Kampf oder Zuschauen verlassen (im Kampf zählt es als Niederlage)
+    usage: /verlassen
+    aliases: [leave, aufgeben]
+  stats:
+    description: Statistik ansehen
+    usage: /stats [spieler]
+    aliases: [statistik]
+  top:
+    description: Rangliste einer Kampfart
+    usage: /top [klassisch|modern|fähigkeiten]
+    aliases: [rangliste]
+  kit:
+    description: Kit-Editor öffnen
+    usage: /kit [klassisch|modern|bergfuehrer|schmied|kraeuterfrau|jaeger]
+    aliases: [kiteditor, kits]
+  warteschlange:
+    description: Gegner suchen
+    usage: /warteschlange <klassisch|modern|fähigkeiten> <locker|gewertet> <1v1|2v2> · /warteschlange verlassen
+    aliases: [queue, suchen]
+  duels:
+    description: Verwaltung (info, neubauen, neuladen)
+    usage: /duels <info|neubauen|neuladen>
+    permission: moinmorni.duels.admin
+
+permissions:
+  moinmorni.duels.admin:
+    description: Duels verwalten und im Kreativmodus in der Duels-Welt bauen
+    default: op
