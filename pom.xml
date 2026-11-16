@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Morni-Duels: Spielmodus „Duels“ des Netzwerks morni.net (Paper-Plugin). -->
+<!-- MoinMorni-Duels: Spielmodus „Duels“ des MoinMorni-Netzwerks (Paper-Plugin). -->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
-  <groupId>net.morni</groupId>
-  <artifactId>morni-duels</artifactId>
-  <version>0.1.1</version>
+  <groupId>de.moinmorni</groupId>
+  <artifactId>moinmorni-duels</artifactId>
+  <version>0.1.2</version>
   <packaging>jar</packaging>
-  <name>Morni-Duels</name>
+  <name>MoinMorni-Duels</name>
 
   <properties>
     <!-- Paper 26.x läuft nur mit Java 25. -->
@@ -53,7 +53,7 @@
   </profiles>
 
   <build>
-    <finalName>Morni-Duels</finalName>
+    <finalName>MoinMorni-Duels</finalName>
     <resources>
       <resource>
         <directory>src/main/resources</directory>
@@ -94,7 +94,7 @@
         <version>3.4.2</version>
         <configuration>
           <excludes>
-            <exclude>net/morni/api/**</exclude>
+            <exclude>de/moinmorni/api/**</exclude>
           </excludes>
         </configuration>
       </plugin>

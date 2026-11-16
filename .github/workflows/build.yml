@@ -1,4 +1,4 @@
-# Morni Duels bauen und prüfen; bei jedem Push auf main ein Release mit Morni-Duels.jar, falls es die
+# MoinMorni Duels bauen und prüfen; bei jedem Push auf main ein Release mit MoinMorni-Duels.jar, falls es die
 # Version (aus pom.xml) noch nicht gibt. Das Netzwerk holt sich von hier immer das neueste Release.
 #
 # Verfasst mit Claude 🤖
@@ -28,20 +28,20 @@ jobs:
           distribution: temurin
           java-version: '25'
           cache: maven
-      - name: Tests und Morni-Duels.jar
+      - name: Tests und MoinMorni-Duels.jar
         run: mvn -B -q package
       - name: Prüfen, ob es auch mit Paper 26.1 übersetzt
         run: mvn -B -q -Ppaper-26.1 -DskipTests compile
       - name: Netzwerk-Schnittstelle ist nicht in der Jar
         run: |
-          if unzip -l target/Morni-Duels.jar | grep -q 'net/morni/api/'; then
-            echo "net.morni.api gehört nicht in die Jar – sie kommt vom Netzwerk-Plugin."
+          if unzip -l target/MoinMorni-Duels.jar | grep -q 'de/moinmorni/api/'; then
+            echo "de.moinmorni.api gehört nicht in die Jar – sie kommt vom Netzwerk-Plugin."
             exit 1
           fi
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: Morni-Duels
-          path: target/Morni-Duels.jar
+          name: MoinMorni-Duels
+          path: target/MoinMorni-Duels.jar
           retention-days: 14
       - name: Release für eine neue Version
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -55,5 +55,5 @@ jobs:
           fi
           NOTES="docs/releases/v$VERSION.md"
           [ -f "$NOTES" ] || NOTES=/dev/null
-          gh release create "v$VERSION" target/Morni-Duels.jar \
-            --title "Morni Duels $VERSION" --notes-file "$NOTES" --target "$GITHUB_SHA"
+          gh release create "v$VERSION" target/MoinMorni-Duels.jar \
+            --title "MoinMorni Duels $VERSION" --notes-file "$NOTES" --target "$GITHUB_SHA"

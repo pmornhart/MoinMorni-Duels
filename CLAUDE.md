@@ -1,4 +1,4 @@
-# Morni Duels
+# MoinMorni Duels
 
 @STAND.md
 
@@ -12,15 +12,15 @@
 - Commits mit Stichpunkten `- Neu:` / `- Behoben:` / `- Verbessert:` / `- Entfernt:`.
 - Keine fremden Marken, Figuren, Namen, Texte oder Grafiken (keine Mojang-, Nintendo-, Hypixel- oder MCPVP-Inhalte):
   nur das Spielgefühl als Vorbild, eigene Namen, eigene Bauten.
-- Die Netzwerk-Schnittstelle `src/api/java/net/morni/api/MorniNet.java` ist eine Kopie aus `pmornhart/morni.net`
-  (`plugins/morninet-network/src/main/java/net/morni/api/MorniNet.java`) und muss **genau gleich** bleiben. Sie wird
+- Die Netzwerk-Schnittstelle `src/api/java/de/moinmorni/api/MoinMorni.java` ist eine Kopie aus `pmornhart/moinmorni.net`
+  (`plugins/moinmorni-network/src/main/java/de/moinmorni/api/MoinMorni.java`) und muss **genau gleich** bleiben. Sie wird
   nur mitübersetzt und kommt **nicht** in die Jar (die echten Klassen bringt das Netzwerk-Plugin mit).
-- Duels muss auch ohne Netzwerk laufen (`softdepend: [MorniNet]`; nur `net/Connected` kennt die Netzwerk-Klassen).
-- `DuelsPlugin.OLD_NAME` (Plugin-Name vor der Umbenennung in morni.net) bleibt stehen: Damit übernimmt Duels beim Start
-  den alten Datenordner (`data/DataMove`) – der einzige gewollte Rest des alten Namens im Code.
+- Duels muss auch ohne Netzwerk laufen (`softdepend: [MoinMorni]`; nur `net/Connected` kennt die Netzwerk-Klassen).
+- `DuelsPlugin.NAME_0_1_1` (Plugin-Name in Version 0.1.1, `MorniDuels`) bleibt stehen: Damit holt Duels beim Start
+  den Datenordner aus 0.1.1 zurück (`data/DataMove`) – der einzige gewollte Rest dieses Namens im Code.
 - Paper 26.x, Java 25. Der Code muss auch gegen Paper 26.1 übersetzen (`mvn -Ppaper-26.1 compile`, läuft in der CI).
 - Neue Version: `<version>` in `pom.xml` erhöhen und `docs/releases/v<version>.md` anlegen; ein Push auf `main` baut das
-  Release mit `Morni-Duels.jar` – das Netzwerk holt es sich von dort.
+  Release mit `MoinMorni-Duels.jar` – das Netzwerk holt es sich von dort.
 - Vor jeder Veröffentlichung (Merge nach `main`) Philips Go abwarten.
 - Ändern sich Turnierhof oder Arenen: `Construction.VERSION` erhöhen – dann baut der Server beim nächsten Start neu.
 - Nach jeder sichtbaren Änderung Bilder wie im echten Minecraft (echte Client-Texturen nur lokal, nie ins Repo).

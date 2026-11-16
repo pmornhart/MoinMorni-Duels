@@ -1,6 +1,6 @@
-# Morni Duels
+# MoinMorni Duels
 
-Der Duell-Modus des Minecraft-Netzwerks **morni.net**: 1 gegen 1 und 2 gegen 2 – **Klassisch** mit
+Der Duell-Modus des Minecraft-Netzwerks **MoinMorni** (moinmorni.net): 1 gegen 1 und 2 gegen 2 – **Klassisch** mit
 Pilzsuppe, **Modern** oder mit **Fähigkeiten**, **locker** oder **gewertet**. Ein Paper-Plugin für Paper 26.x
 (Java 25). Es läuft im Netzwerk und auch ganz allein.
 
@@ -45,11 +45,11 @@ Pilzsuppe, **Modern** oder mit **Fähigkeiten**, **locker** oder **gewertet**. E
 | `/verlassen` | Warteschlange, Kampf (zählt als Niederlage) oder Zuschauen verlassen |
 | `/stats [spieler]` · `/top [kampfart]` | Statistik und Rangliste |
 | `/kit [kampfart\|fähigkeit]` | Kit-Editor |
-| `/duels info\|neubauen\|neuladen` | Verwaltung (`morninet.duels.admin`) |
+| `/duels info\|neubauen\|neuladen` | Verwaltung (`moinmorni.duels.admin`) |
 
 ## Im Netzwerk
 
-Das Netzwerk-Plugin („MorniNet“) stellt die Schnittstelle `net.morni.api.MorniNet` bereit; Duels nutzt sie, wenn
+Das Netzwerk-Plugin („MoinMorni“) stellt die Schnittstelle `de.moinmorni.api.MoinMorni` bereit; Duels nutzt sie, wenn
 sie da ist (`softdepend`): Sprache der Spieler, Party, Statistik, Zustand für Lobby-Figur und Webseite, zurück zur
 Lobby. Ohne Netzwerk: deutsche Texte, Statistik nur lokal, „zur Lobby“ trennt die Verbindung mit einem Hinweis.
 
@@ -61,13 +61,13 @@ Statistik nach jedem Kampf (`stats("duels", …)`):
 
 Zustand: `waiting` (kein Kampf) oder `running`, dazu die Spielerzahl.
 
-Bei jedem Push auf `main` baut GitHub ein Release mit `Morni-Duels.jar` (Version aus `pom.xml`); das Netzwerk holt
+Bei jedem Push auf `main` baut GitHub ein Release mit `MoinMorni-Duels.jar` (Version aus `pom.xml`); das Netzwerk holt
 sich das neueste.
 
 ## Bauen und testen
 
 ```bash
-mvn package                      # Tests + target/Morni-Duels.jar (Java 25)
+mvn package                      # Tests + target/MoinMorni-Duels.jar (Java 25)
 mvn -Ppaper-26.1 compile         # passt der Code auch zu Paper 26.1?
 test/run.sh                      # echter Test: Paper-Server + Test-Spieler (mineflayer)
 ```
@@ -81,10 +81,10 @@ auch für Paper 26.3 über ViaBackwards (`NO_MOVE=1`).
 
 ## Einstellungen
 
-`plugins/MorniDuels/config.yml`: Welt, Arena-Kopien, Zeitlimit, Countdown, Nachspiel, Ablauf von
-Herausforderungen, Elo (Start, K-Faktor, Spanne) und Suppen-Heilung – mit Erklärungen in der Datei. Im Netzwerk
-stellt man sie im Panel ein. Einen Duels-Ordner aus der Zeit vor der Umbenennung in morni.net (16.11.2026) übernimmt
-das Plugin beim ersten Start von selbst – Spielerdaten, Rangliste und Einstellungen bleiben.
+`plugins/MoinMorniDuels/config.yml`: Welt, Arena-Kopien, Zeitlimit, Countdown, Nachspiel, Ablauf von
+Herausforderungen, Elo (Start, K-Faktor, Spanne) und Suppen-Heilung – mit Erklärungen in der Datei. Den Duels-Ordner
+aus Version 0.1.1 (`plugins/MorniDuels`) holt das Plugin beim ersten Start von selbst zurück – Spielerdaten,
+Rangliste und Einstellungen bleiben.
 
 ---
 
