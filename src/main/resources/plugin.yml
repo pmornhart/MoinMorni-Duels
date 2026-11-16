@@ -1,12 +1,12 @@
-name: MoinMorniDuels
+name: MorniDuels
 version: '${project.version}'
-main: de.moinmorni.duels.DuelsPlugin
+main: net.morni.duels.DuelsPlugin
 api-version: '1.21'
-description: Duels für das MoinMorni-Netzwerk – 1 gegen 1 und 2 gegen 2, Klassisch, Modern und Fähigkeiten.
-authors: [MoinMorni]
-website: https://moinmorni.net
+description: Duels für das Netzwerk morni.net – 1 gegen 1 und 2 gegen 2, Klassisch, Modern und Fähigkeiten.
+authors: [morni.net]
+website: https://morni.net
 # Läuft mit dem Netzwerk-Plugin (Sprache, Party, Statistik) und auch allein.
-softdepend: [MoinMorni]
+softdepend: [MorniNet]
 
 commands:
   duel:
@@ -40,9 +40,9 @@ commands:
   duels:
     description: Verwaltung (info, neubauen, neuladen)
     usage: /duels <info|neubauen|neuladen>
-    permission: moinmorni.duels.admin
+    permission: morninet.duels.admin
 
 permissions:
-  moinmorni.duels.admin:
+  morninet.duels.admin:
     description: Duels verwalten und im Kreativmodus in der Duels-Welt bauen
     default: op

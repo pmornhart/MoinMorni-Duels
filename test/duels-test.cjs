@@ -1,5 +1,5 @@
 /**
- * Echter Test von MoinMorni Duels mit Test-Spielern (mineflayer) auf Paper 26.1.2 – gestartet von test/run.sh.
+ * Echter Test von Morni Duels mit Test-Spielern (mineflayer) auf Paper 26.1.2 – gestartet von test/run.sh.
  *   node duels-test.cjs <host> <port> <rcon-host:port> <rcon-passwort-datei> <server-ordner>
  *
  * Spieler: Anna (deutsch, Party-Leiterin mit Bert), Bert (englisch), Carl, Dora (deutsch). Sprache und Party kommen
@@ -64,10 +64,10 @@ function offlineUuid(name) {
 
 const cmd = (...commands) => rcon(RCON, PASS, commands);
 const playerFile = (name) =>
-  path.join(SERVER, 'plugins/MoinMorniDuels/spieler', `${offlineUuid(name)}.yml`);
+  path.join(SERVER, 'plugins/MorniDuels/spieler', `${offlineUuid(name)}.yml`);
 const readFile = (file) => (fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '');
 const calls = () =>
-  readFile(path.join(SERVER, 'plugins/MoinMorni/calls.log'))
+  readFile(path.join(SERVER, 'plugins/MorniNet/calls.log'))
     .split('\n')
     .filter(Boolean)
     .map((l) => JSON.parse(l));
@@ -380,7 +380,7 @@ async function main() {
   const ranked = log.filter((c) => c.t === 'stats' && c.name === 'Anna' && c.add.ranked_games === 1)[0];
   check('Netzwerk: Bestwert elo_klassisch = 1016', ranked && ranked.best.elo_klassisch === 1016, JSON.stringify(ranked));
   check('Rangliste in rangliste.yml', /Anna[\s\S]*klassisch:[\s\S]*elo: 1016/.test(
-    readFile(path.join(SERVER, 'plugins/MoinMorniDuels/rangliste.yml'))));
+    readFile(path.join(SERVER, 'plugins/MorniDuels/rangliste.yml'))));
 
   // ------------------------------------------------------------------ Zuschauen + Verbindung weg = Niederlage
   const carl = await join('Carl');
