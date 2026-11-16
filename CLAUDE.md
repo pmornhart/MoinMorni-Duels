@@ -16,6 +16,8 @@
   (`plugins/moinmorni-network/src/main/java/de/moinmorni/api/MoinMorni.java`) und muss **genau gleich** bleiben. Sie wird
   nur mitübersetzt und kommt **nicht** in die Jar (die echten Klassen bringt das Netzwerk-Plugin mit).
 - Duels muss auch ohne Netzwerk laufen (`softdepend: [MoinMorni]`; nur `net/Connected` kennt die Netzwerk-Klassen).
+- `DuelsPlugin.NAME_0_1_1` (Plugin-Name in Version 0.1.1, `MorniDuels`) bleibt stehen: Damit holt Duels beim Start
+  den Datenordner aus 0.1.1 zurück (`data/DataMove`) – der einzige gewollte Rest dieses Namens im Code.
 - Paper 26.x, Java 25. Der Code muss auch gegen Paper 26.1 übersetzen (`mvn -Ppaper-26.1 compile`, läuft in der CI).
 - Neue Version: `<version>` in `pom.xml` erhöhen und `docs/releases/v<version>.md` anlegen; ein Push auf `main` baut das
   Release mit `MoinMorni-Duels.jar` – das Netzwerk holt es sich von dort.

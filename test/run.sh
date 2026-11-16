@@ -97,6 +97,8 @@ party.Anna=Anna,Bert
 EOF
 rm -f "$SERVER/plugins/MoinMorni/calls.log"
 rm -rf "$SERVER/plugins/MoinMorniDuels/spieler" "$SERVER/plugins/MoinMorniDuels/rangliste.yml"
+# Alte Jars weg (auch solche aus einer Fassung mit anderem Namen), damit nie zwei Fassungen laden.
+rm -f "$SERVER"/plugins/*.jar
 cp "$REPO/target/MoinMorni-Duels.jar" "$SERVER/plugins/"
 cp "$REPO/test/fake-network/target/MoinMorni-FakeNetwork.jar" "$SERVER/plugins/"
 for jar in ${EXTRA_PLUGINS:-}; do

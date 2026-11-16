@@ -1,5 +1,6 @@
 package de.moinmorni.duels;
 
+import de.moinmorni.duels.data.DataMove;
 import de.moinmorni.duels.data.Leaderboard;
 import de.moinmorni.duels.data.PlayerData;
 import de.moinmorni.duels.data.Store;
@@ -16,6 +17,8 @@ import de.moinmorni.duels.net.Network;
 import de.moinmorni.duels.world.Arenas;
 import de.moinmorni.duels.world.Construction;
 import de.moinmorni.duels.world.VoidGenerator;
+import java.io.IOException;
+import java.nio.file.Path;
 import java.util.List;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -40,6 +43,8 @@ import org.bukkit.scoreboard.Scoreboard;
 public final class DuelsPlugin extends JavaPlugin {
 
     private static final String ADMIN = "moinmorni.duels.admin";
+    /** Name des Plugins in Version 0.1.1 (kurz umbenannt) – nur, um dessen Datenordner zurückzuholen. */
+    private static final String NAME_0_1_1 = "MorniDuels";
     private static final String HEALTH_OBJECTIVE = "mm_duels_hp";
     private static final long SECOND = 20L;
     private static final long LANGUAGE_CHECK = 40L;
@@ -66,8 +71,26 @@ public final class DuelsPlugin extends JavaPlugin {
     private String lastState = "";
     private int lastPlayers = -1;
 
+    /** Daten aus dem Ordner der Version 0.1.1 zurückholen, bevor irgendetwas gelesen wird. */
+    @Override
+    public void onLoad() {
+        Path folder = getDataFolder().toPath();
+        try {
+            if (DataMove.run(folder.resolveSibling(NAME_0_1_1), folder)) {
+                getLogger().info("Daten aus plugins/" + NAME_0_1_1 + " übernommen (Duels heißt wieder "
+                        + getName() + ").");
+            }
+        } catch (IOException e) {
+            getLogger().severe("Daten aus plugins/" + NAME_0_1_1 + " ließen sich nicht übernehmen: " + e);
+        }
+    }
+
     @Override
     public void onEnable() {
+        if (getServer().getPluginManager().getPlugin(NAME_0_1_1) != null) {
+            getLogger().severe("Die Duels-Jar aus Version 0.1.1 (" + NAME_0_1_1 + ") liegt noch im Ordner plugins – "
+                    + "bitte löschen, sonst laufen zwei Duels nebeneinander.");
+        }
         saveDefaultConfig();
         settings = Settings.load(getConfig());
         Items.init(this);

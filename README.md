@@ -82,7 +82,9 @@ auch für Paper 26.3 über ViaBackwards (`NO_MOVE=1`).
 ## Einstellungen
 
 `plugins/MoinMorniDuels/config.yml`: Welt, Arena-Kopien, Zeitlimit, Countdown, Nachspiel, Ablauf von
-Herausforderungen, Elo (Start, K-Faktor, Spanne) und Suppen-Heilung – mit Erklärungen in der Datei.
+Herausforderungen, Elo (Start, K-Faktor, Spanne) und Suppen-Heilung – mit Erklärungen in der Datei. Den Duels-Ordner
+aus Version 0.1.1 (`plugins/MorniDuels`) holt das Plugin beim ersten Start von selbst zurück – Spielerdaten,
+Rangliste und Einstellungen bleiben.
 
 ---
 
