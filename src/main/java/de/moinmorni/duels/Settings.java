@@ -16,9 +16,12 @@ public record Settings(
         int rangeGrowth,
         int rangeStepSeconds,
         int rangeMax,
-        double soupHeal) {
+        double soupHeal,
+        int returnSeconds) {
 
     private static final int MAX_COPIES = 20;
+    /** Höchstens so lange bleibt ein Platz frei (länger ist für den Gegner zu viel Warten). */
+    private static final int MAX_RETURN_SECONDS = 600;
 
     static Settings load(FileConfiguration c) {
         return new Settings(
@@ -34,7 +37,8 @@ public record Settings(
                 Math.max(0, c.getInt("wertung.spanne-plus", 50)),
                 Math.max(1, c.getInt("wertung.spanne-alle-sekunden", 5)),
                 Math.max(0, c.getInt("wertung.spanne-max", 1000)),
-                Math.max(0.5, c.getDouble("suppe.heilung", 7.0)));
+                Math.max(0.5, c.getDouble("suppe.heilung", 7.0)),
+                clamp(c.getInt("rueckkehr-sekunden", 30), 0, MAX_RETURN_SECONDS));
     }
 
     private static int clamp(int v, int min, int max) {

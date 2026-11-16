@@ -24,6 +24,26 @@ PvP-Servern – nur Mechanik, eigene Namen und eigene Optik.
 
 ## Stand (16.11.2026)
 
+- Version 0.1.3 (Branch `claude/zurueck-ins-spiel`, wartet auf Philips Go): **Zurück ins Spiel** (Philip: „Wenn das
+  Game crasht, soll man zurück zum Spiel können“ und vor der Lobby nachfragen, solange man spielt). Netzwerk-
+  Schnittstelle 2 (Kopie byte-gleich): `playing` vom Countdown bis zum Ausscheiden bzw. Ende (`Connected` meldet nur
+  Änderungen), das Bett ruft `askToLobby`, Verbindung mitten im Kampf weg → Platz `rueckkehr-sekunden` frei (oben in
+  der config.yml, Vorgabe 30, 0 = aus) und `holdSlot(uuid, s)`. Fehlt dadurch ein ganzes Team, hält der Kampf an
+  (`Fight.paused`: alle eingefroren, keine Treffer, keine Heilung, Uhr steht, „Warte auf … – n s“ in Aktionsleiste und
+  Leiste oben); im 2 gegen 2 kämpft das Team weiter. Rechtzeitig zurück → `PlayerState` stellt Ort, Spielmodus,
+  Inventar, Leben, Absorption, Hunger, Effekte wieder her (Ort schon beim Betreten über
+  `AsyncPlayerSpawnLocationEvent`), Abklingzeiten der Fähigkeiten bleiben, 3-2-1 → „Weiter!“, `holdSlot(uuid, 0)`.
+  Zu spät → scheidet aus wie bisher (`Cause.GONE`, Niederlage), Hinweis beim nächsten Betreten; Kampfende oder Abbruch
+  → `holdSlot(uuid, 0)`. Älteres Netzwerk-Plugin (`LinkageError`) → einmal Hinweis im Log, alles wie bisher.
+  Test-Netzwerk schreibt `playing`, `ask-to-lobby` (fragt nur, solange „spielt“), `hold-slot` mit und spielt mit
+  `api=1` ein älteres Netzwerk-Plugin. Geprüft: 46 Unit-Tests (neu `SettingsTest`), Paper 26.1 übersetzt, echter Test
+  (Paper 26.1.2, `test/run.sh`, `rueckkehr-sekunden: 12`) **110/110**, Log ohne Fehler – neu: „spielt“ im Kampf und
+  danach nicht mehr, in Halle/Warteschlange nie; 1 gegen 1: Bert geht → Kampf angehalten, „Warte auf Bert – 12 s“,
+  holdSlot 12, Anna eingefroren, kein Sieg; Bert zurück → gleiche Stelle, gleiches Leben (14), gleiche Ausrüstung,
+  „Welcome back“, 3-2-1 „Weiter!“, Uhr stand still (40 s → 39 s nach 8 s), holdSlot 0, Anna besiegt ihn; zu lange weg
+  → „nicht rechtzeitig zurückgekommen“, Sieg für Anna, holdSlot 12 → 0, Hinweis beim Wiederkommen, Statistik;
+  2 gegen 2: Team kämpft weiter (nicht eingefroren), Bert zurück auf seiner Seite mit Ausrüstung; Bett → `askToLobby`;
+  älteres Netzwerk-Plugin → Bett geht wie bisher über `toLobby`.
 - Version 0.1.2 (Branch `claude/moinmorni`, wartet auf Philips Go): **Name wieder MoinMorni** – Version 0.1.1
   (16.11. veröffentlicht) hatte Duels kurz umbenannt (Plugin `MorniDuels`); der neue Name war nicht verfügbar, darum
   ist alles wieder wie in 0.1.0 (Umbenennung per `git revert` zurückgenommen). Der Datenordner aus 0.1.1 zieht in
@@ -46,6 +66,7 @@ PvP-Servern – nur Mechanik, eigene Namen und eigene Optik.
 
 ## Offen
 
-- Philip: Go für `main` (dann Release v0.1.2). Das Netzwerk holt dann wieder `MoinMorni-Duels.jar` (Plugin
-  `MoinMorniDuels`) und muss die Jar aus 0.1.1 vom Duels-Server löschen.
+- Philip: Go für `main` mit 0.1.3 (Zurück ins Spiel). Netzwerk-Repo: Einstellungs-Katalog um `rueckkehr-sekunden`
+  ergänzen (0–600, Vorgabe 30); Nachfrage vor der Lobby und „Zurück ins Spiel“ baut das Netzwerk-Plugin.
+- Nicht echt geprüft: Rückkehr mit echtem Client über das echte Netzwerk (Lobby-Angebot), Bedrock.
 - Einstellungen (Zeitlimit, Elo, Arenen …) im Panel des Netzwerks (Einstellungs-Katalog) – gehört ins Netzwerk-Repo.

@@ -3,7 +3,8 @@
  *   node duels-test.cjs <host> <port> <rcon-host:port> <rcon-passwort-datei> <server-ordner>
  *
  * Spieler: Anna (deutsch, Party-Leiterin mit Bert), Bert (englisch), Carl, Dora (deutsch). Sprache und Party kommen
- * vom Test-Netzwerk (test/fake-network), das auch Statistik, Zustand und „zur Lobby“ in calls.log mitschreibt.
+ * vom Test-Netzwerk (test/fake-network), das auch Statistik, Zustand, „zur Lobby“, „spielt gerade“ und freie Plätze
+ * (Verbindung weg) in calls.log mitschreibt. Im Test bleibt ein Platz 12 Sekunden frei (rueckkehr-sekunden).
  *
  * Verfasst mit Claude 🤖
  */
@@ -19,6 +20,7 @@ const VERSION = process.env.MC_VERSION ?? '26.1';
 const HALL = { x: 0.5, y: 101, z: 12.5 };
 const AFTER_MS = 4000; // nachspiel-sekunden im Test
 const TIME_LIMIT_MS = 40000; // zeitlimit-sekunden im Test
+const RETURN_S = 12; // rueckkehr-sekunden im Test
 const NO_MOVE = process.env.NO_MOVE === '1'; // Paper 26.3 über ViaBackwards: Test-Spieler ohne Bewegung
 
 const results = [];
@@ -113,6 +115,12 @@ async function join(name) {
     if (bot.entity && p.entityId === bot.entity.id) bot.pushes.push(p.velocity);
   });
   bot._client.on('set_title_text', (p) => bot.titles.push(plain(p.text)));
+  bot.bossTitle = '';
+  const boss = (b) => {
+    bot.bossTitle = b.title?.toString?.() ?? '';
+  };
+  bot.on('bossBarCreated', boss);
+  bot.on('bossBarUpdated', boss);
   bot.on('kicked', (r) => {
     bot.kickReason = plain(r);
   });
@@ -186,7 +194,7 @@ async function fightUntilDown(attacker, victim, swordSlot) {
 async function main() {
   // ------------------------------------------------------------------ Ankunft
   const anna = await join('Anna');
-  const bert = await join('Bert');
+  let bert = await join('Bert');
   check('Ankunft in der Wartehalle (Turnierhof)', inHall(anna), JSON.stringify(anna.entity.position));
   check(
     'Schnellleiste: Schwert, Amboss, Gold, Bett',
@@ -308,6 +316,12 @@ async function main() {
   const bertStats = log.find((c) => c.t === 'stats' && c.name === 'Bert');
   check('Netzwerk-Statistik für Bert: losses, deaths', bertStats && bertStats.add.losses === 1 &&
     bertStats.add.deaths === 1 && bertStats.add.losses_klassisch === 1, JSON.stringify(bertStats));
+  const plays = (name) => log.filter((c) => c.t === 'playing' && c.name === name).map((c) => c.playing);
+  check('Netzwerk: „spielt gerade“ im Kampf, danach (ausgeschieden, Ende) nicht mehr',
+    plays('Anna')[0] === true && plays('Anna').includes(false) && plays('Bert')[0] === true && plays('Bert')[1] === false,
+    `Anna ${plays('Anna').join(',')} · Bert ${plays('Bert').join(',')}`);
+  check('Netzwerk: in Halle und Warteschlange nie „spielt gerade“',
+    log.findIndex((c) => c.t === 'playing') > log.findIndex((c) => c.t === 'state' && c.state === 'waiting'));
   const states = log.filter((c) => c.t === 'state').map((c) => c.state);
   check('Zustand ans Netzwerk: „running“ und danach „waiting“',
     states.includes('running') && states.lastIndexOf('waiting') > states.indexOf('running'), states.join(','));
@@ -382,7 +396,78 @@ async function main() {
   check('Rangliste in rangliste.yml', /Anna[\s\S]*klassisch:[\s\S]*elo: 1016/.test(
     readFile(path.join(SERVER, 'plugins/MoinMorniDuels/rangliste.yml'))));
 
-  // ------------------------------------------------------------------ Zuschauen + Verbindung weg = Niederlage
+  // ------------------------------------------------------------------ Verbindung weg, rechtzeitig zurück (1 gegen 1)
+  clear(anna, bert);
+  let mark = calls().length;
+  anna.chat('/duel Bert klassisch');
+  await sleep(600);
+  bert.chat('/duel accept');
+  check('Rückkehr: Kampf Anna gegen Bert beginnt', await waitFor(() => inArena(anna) && inArena(bert), 6000));
+  await started(anna);
+  await cmd('damage Bert 6 minecraft:out_of_world');
+  await waitFor(() => bert.health <= 14.5, 2000);
+  const hpBefore = bert.health;
+  const posBefore = bert.entity.position.clone();
+  const soupsBefore = bert.inventory.slots.filter((it) => it?.name === 'mushroom_stew').length;
+  const clockOf = (t) => {
+    const m = /(\d+):(\d\d)\s*$/.exec(t);
+    return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+  };
+  await waitFor(() => clockOf(anna.bossTitle) != null, 3000);
+  const clockBefore = clockOf(anna.bossTitle);
+  const pausedSince = Date.now();
+  clear(anna);
+  bert.quit();
+  check(`Verbindung weg: Kampf angehalten, Anna erfährt es (wartet ${RETURN_S} s)`,
+    await waitFor(() => sees(anna, new RegExp(`Bert hat die Verbindung verloren – der Kampf ist angehalten\\. Wir warten bis zu ${RETURN_S} Sekunden`)), 4000),
+    anna.chats.join(' | '));
+  check('Anzeige „Warte auf Bert – … s“', await waitFor(() => anna.bars.some((b) => /Warte auf Bert – \d+ s/.test(b)), 3000),
+    anna.bars.slice(-1)[0]);
+  check(`Netzwerk: Platz für Bert ${RETURN_S} s frei (holdSlot)`,
+    calls().slice(mark).some((c) => c.t === 'hold-slot' && c.name === 'Bert' && c.seconds === RETURN_S),
+    JSON.stringify(calls().slice(mark).filter((c) => c.t === 'hold-slot')));
+  if (!NO_MOVE) {
+    const frozenAt = anna.entity.position.clone();
+    anna.setControlState('forward', true);
+    await sleep(900);
+    anna.setControlState('forward', false);
+    await sleep(200);
+    check('Angehalten: Anna steht eingefroren', anna.entity.position.distanceTo(frozenAt) < 0.6,
+      `bewegt ${anna.entity.position.distanceTo(frozenAt).toFixed(2)}`);
+  }
+  await sleep(1500);
+  check('Kein Sieg, solange Bert noch zurückkommen kann', !sees(anna, /Sieg für/), anna.chats.join(' | '));
+  clear(anna);
+  bert = await join('Bert');
+  check('Bert ist rechtzeitig zurück: wieder in der Arena (nicht in der Halle)', inArena(bert) && bert.game.gameMode === 'adventure',
+    `${JSON.stringify(bert.entity.position)} ${bert.game.gameMode}`);
+  check('Bert steht, wo er war', bert.entity.position.distanceTo(posBefore) < 1.5,
+    `${posBefore} → ${bert.entity.position}`);
+  check('Bert hat dasselbe Leben', Math.abs(bert.health - hpBefore) < 0.6, `${hpBefore} → ${bert.health}`);
+  check('Bert hat seine Ausrüstung (Schwert, Rüstung, Suppen)',
+    slot(bert, 0)?.name === 'diamond_sword' && bert.inventory.slots[6]?.name === 'iron_chestplate' &&
+      bert.inventory.slots.filter((it) => it?.name === 'mushroom_stew').length === soupsBefore,
+    `${slot(bert, 0)?.name} ${bert.inventory.slots[6]?.name} ${soupsBefore} Suppen`);
+  check('Bert (englisch): „Welcome back“', await waitFor(() => sees(bert, /Welcome back! You're right where you were/), 3000),
+    bert.chats.join(' | '));
+  check('Anna: „Bert ist wieder da“, dann 3-2-1 und „Weiter!“',
+    await waitFor(() => sees(anna, /Bert ist wieder da/) && ['3', '2', '1'].every((n) => anna.titles.includes(n)) &&
+      sawTitle(anna, /^Weiter!$/), 7000), `${anna.chats.join(' | ')} || ${anna.titles.join(' | ')}`);
+  await sleep(1200);
+  const clockAfter = clockOf(anna.bossTitle);
+  check('Die Uhr stand still: weiter mit derselben Restzeit', clockBefore != null && clockAfter != null &&
+    clockBefore - clockAfter <= 2 && Date.now() - pausedSince >= 6000,
+    `${clockBefore} s → ${clockAfter} s nach ${((Date.now() - pausedSince) / 1000).toFixed(1)} s`);
+  let fresh = calls().slice(mark);
+  check('Netzwerk: Platz wieder zu (0) und Bert „spielt“ wieder',
+    fresh.some((c) => c.t === 'hold-slot' && c.name === 'Bert' && c.seconds === 0) &&
+      fresh.filter((c) => c.t === 'playing' && c.name === 'Bert').slice(-1)[0]?.playing === true,
+    JSON.stringify(fresh.filter((c) => c.name === 'Bert' && c.t !== 'stats')));
+  check('Weiter mit demselben Stand: Anna besiegt Bert', await fightUntilDown(anna, bert, 4) &&
+    (await waitFor(() => sees(anna, /Sieg für Anna/), 3000)), anna.chats.slice(-3).join(' | '));
+  await waitFor(() => inHall(anna) && inHall(bert), AFTER_MS + 5000);
+
+  // ------------------------------------------------------------------ Zuschauen + zu lange weg = Niederlage
   const carl = await join('Carl');
   // Rechtsklick mit dem Schwert auf einen Spieler: herausfordern (Menü), dann ablehnen.
   clear(anna, carl);
@@ -410,18 +495,26 @@ async function main() {
     await waitFor(() => carl.game.gameMode === 'spectator' && inArena(carl), 4000),
     `${carl.game.gameMode} ${JSON.stringify(carl.entity.position)}`);
   check('Zuschauen: Hinweis mit /verlassen', sees(carl, /Du schaust Anna zu/));
+  mark = calls().length;
   bert.quit();
-  check('Verbindung weg = Niederlage: Sieg für Anna', await waitFor(() => sees(anna, /Bert hat das Spiel verlassen/) &&
-    sees(anna, /Sieg für Anna/), 4000), anna.chats.join(' | '));
+  check('Verbindung weg: Anna erfährt es, der Platz bleibt frei', await waitFor(() => sees(anna, /Bert hat die Verbindung verloren/), 4000),
+    anna.chats.join(' | '));
+  check(`Zu lange weg (über ${RETURN_S} s) = Niederlage: Sieg für Anna`,
+    await waitFor(() => sees(anna, /Bert ist nicht rechtzeitig zurückgekommen/) && sees(anna, /Sieg für Anna/), RETURN_S * 1000 + 5000),
+    anna.chats.join(' | '));
+  fresh = calls().slice(mark).filter((c) => c.t === 'hold-slot' && c.name === 'Bert').map((c) => c.seconds);
+  check('Netzwerk: Platz erst frei, danach wieder zu (holdSlot 12, dann 0)', fresh.join(',') === `${RETURN_S},0`, fresh.join(','));
   check('Zuschauer sieht das Ergebnis', await waitFor(() => sees(carl, /Sieg für Anna/), 3000), carl.chats.join(' | '));
   check('Zuschauer nach dem Nachspiel zurück in der Halle', await waitFor(() => inHall(carl), AFTER_MS + 5000),
     `${carl.game.gameMode} ${JSON.stringify(carl.entity.position)}`);
   await waitFor(() => inHall(anna), 3000);
-  const bert2 = await join('Bert');
+  let bert2 = await join('Bert');
+  check('Zu spät zurück: in der Halle, mit Hinweis „Your fight is over by now“', inHall(bert2) &&
+    (await waitFor(() => sees(bert2, /Your fight is over by now/), 3000)), bert2.chats.join(' | '));
   bert2.chat('/stats');
   await sleep(800);
-  check('Bert nach dem Wiederkommen: 4 Niederlagen in Klassisch/Fähigkeiten gesamt',
-    sees(bert2, /Losses 3/) && sees(bert2, /Losses 1/), bert2.chats.filter((c) => c.includes('Losses')).join(' | '));
+  check('Bert nach dem Wiederkommen: 5 Niederlagen in Klassisch/Fähigkeiten gesamt',
+    sees(bert2, /Losses 4/) && sees(bert2, /Losses 1/), bert2.chats.filter((c) => c.includes('Losses')).join(' | '));
 
   // ------------------------------------------------------------------ 2 gegen 2 mit Party
   const dora = await join('Dora');
@@ -439,6 +532,25 @@ async function main() {
     side(anna) === side(bert2) && side(carl) === side(dora) && side(anna) !== side(carl),
     [anna, bert2, carl, dora].map((b) => `${b.username}:${side(b)}`).join(' '));
   await started(anna);
+  clear(anna, bert2, carl, dora);
+  bert2.quit();
+  check(`2 gegen 2: Bert weg – der Platz bleibt ${RETURN_S} s frei, das Team kämpft weiter`,
+    await waitFor(() => sees(anna, new RegExp(`Bert hat die Verbindung verloren – der Platz bleibt ${RETURN_S} Sekunden frei, der Kampf geht weiter`)), 4000),
+    anna.chats.join(' | '));
+  if (!NO_MOVE) {
+    const at = carl.entity.position.clone();
+    carl.setControlState('back', true);
+    await sleep(700);
+    carl.setControlState('back', false);
+    await sleep(200);
+    check('2 gegen 2: nicht angehalten (Carl kann sich bewegen)', carl.entity.position.distanceTo(at) > 0.6,
+      `bewegt ${carl.entity.position.distanceTo(at).toFixed(2)}`);
+  }
+  bert2 = await join('Bert');
+  check('2 gegen 2: Bert zurück im Kampf, auf seiner Seite, mit Ausrüstung',
+    inArena(bert2) && side(bert2) === side(anna) && slot(bert2, 0)?.name === 'diamond_sword' &&
+      (await waitFor(() => sees(bert2, /Welcome back/), 3000)),
+    `${JSON.stringify(bert2.entity.position)} ${slot(bert2, 0)?.name}`);
   clear(anna, bert2, carl, dora);
   carl.chat('/verlassen');
   await sleep(500);
@@ -519,15 +631,26 @@ async function main() {
   dora.setQuickBarSlot(8);
   await sleep(300);
   dora.activateItem();
-  check('Bett „Zurück zur Lobby“ → Netzwerk schickt in die Lobby',
-    await waitFor(() => dora.kickReason !== null, 4000) && calls().some((c) => c.t === 'to-lobby' && c.name === 'Dora'),
+  check('Bett „Zurück zur Lobby“ → Netzwerk fragt (askToLobby), Dora spielt nicht → gleich in die Lobby',
+    await waitFor(() => dora.kickReason !== null, 4000) &&
+      calls().some((c) => c.t === 'ask-to-lobby' && c.name === 'Dora' && c.playing === false) &&
+      !calls().some((c) => c.t === 'to-lobby' && c.name === 'Dora'),
     dora.kickReason ?? 'nicht gekickt');
 
   log = calls();
   check('Netzwerk: Statistik nach jedem Kampf (mindestens 12 Meldungen)',
     log.filter((c) => c.t === 'stats').length >= 12, String(log.filter((c) => c.t === 'stats').length));
 
-  for (const b of [anna, bert2, carl]) b.quit();
+  // Älteres Netzwerk-Plugin (ohne Methoden ab Version 2): „zur Lobby“ geht wie bisher sofort.
+  fs.appendFileSync(path.join(SERVER, 'plugins/MoinMorni/fake.properties'), 'api=1\n');
+  carl.setQuickBarSlot(8);
+  await sleep(300);
+  carl.activateItem();
+  check('Älteres Netzwerk-Plugin: Bett schickt wie bisher sofort in die Lobby (toLobby)',
+    await waitFor(() => carl.kickReason !== null, 4000) && calls().some((c) => c.t === 'old-api' && c.method === 'askToLobby') &&
+      calls().some((c) => c.t === 'to-lobby' && c.name === 'Carl'), carl.kickReason ?? 'nicht gekickt');
+
+  for (const b of [anna, bert2]) b.quit();
   await sleep(500);
   const failed = results.filter((r) => !r.ok).length;
   console.log(`\n${results.length - failed}/${results.length} bestanden`);
@@ -538,7 +661,7 @@ setTimeout(() => {
   console.log('Zeit abgelaufen');
   console.log(`${results.filter((r) => r.ok).length}/${results.length} bis hierhin bestanden`);
   process.exit(2);
-}, 480_000);
+}, 600_000);
 
 main().catch((e) => {
   console.error(e);

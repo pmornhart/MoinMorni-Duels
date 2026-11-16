@@ -22,8 +22,15 @@ public final class Fight {
     /** Countdown (eingefroren) → Kampf → Nachspiel (alle unverwundbar, dann zurück in die Halle). */
     public enum Phase { COUNTDOWN, RUNNING, ENDED }
 
-    /** Wie jemand ausgeschieden ist (LEFT = in eine andere Welt gewechselt). */
-    public enum Cause { KILLED, DIED, VOID, QUIT, LEFT, FORFEIT }
+    /**
+     * Wie jemand ausgeschieden ist (LEFT = in eine andere Welt gewechselt, GONE = Verbindung weg und nicht rechtzeitig
+     * zurückgekommen).
+     */
+    public enum Cause { KILLED, DIED, VOID, QUIT, LEFT, FORFEIT, GONE }
+
+    /** Verbindung weg: Stand beim Verlassen und bis wann (Millisekunden) der Platz frei bleibt. */
+    record Away(long until, PlayerState state) {
+    }
 
     /** So lange zählt ein Treffer noch als „wer war's“ (z. B. bei einem Sturz in die Tiefe). */
     static final long CREDIT_MS = 15_000L;
@@ -49,6 +56,13 @@ public final class Fight {
     final Map<String, BossBar> bars = new HashMap<>();
     /** Schon angesagte Restzeiten (60, 30, 10 Sekunden). */
     final Set<Integer> warned = new HashSet<>();
+    /** Wer gerade die Verbindung verloren hat und noch zurückkommen darf. */
+    final Map<UUID, Away> away = new LinkedHashMap<>();
+    /** Angehalten, weil ein Team gerade ganz fehlt: alle eingefroren, die Zeit steht. */
+    boolean paused;
+    long pausedAt;
+    /** Alle wieder da: noch so viele Sekunden Countdown, dann geht es weiter (0 = kein Countdown). */
+    int resumeIn;
     Phase phase = Phase.COUNTDOWN;
     int countdown;
     long startedAt;
@@ -88,6 +102,20 @@ public final class Fight {
 
     public boolean isAlive(UUID u) {
         return alive.contains(u);
+    }
+
+    /** Wird gerade gekämpft (läuft und ist nicht angehalten)? */
+    public boolean live() {
+        return phase == Phase.RUNNING && !paused;
+    }
+
+    /** Steht {@code u} gerade eingefroren (Countdown oder angehalten)? */
+    public boolean frozen(UUID u) {
+        return alive.contains(u) && phase != Phase.ENDED && (phase == Phase.COUNTDOWN || paused);
+    }
+
+    public boolean paused() {
+        return paused;
     }
 
     /** 0 oder 1, -1 = gehört nicht dazu. */

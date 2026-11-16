@@ -27,6 +27,7 @@ import org.bukkit.event.block.Action;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
+import org.bukkit.event.entity.EntityRegainHealthEvent;
 import org.bukkit.event.entity.FoodLevelChangeEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.entity.ProjectileLaunchEvent;
@@ -61,7 +62,7 @@ public final class CombatListener implements Listener {
         }
         UUID v = victim.getUniqueId();
         Optional<Fight> of = plugin.fights().of(v);
-        if (of.isEmpty() || of.get().phase() != Fight.Phase.RUNNING || !of.get().isAlive(v)) {
+        if (of.isEmpty() || !of.get().live() || !of.get().isAlive(v)) {
             e.setCancelled(true);
             return;
         }
@@ -159,7 +160,7 @@ public final class CombatListener implements Listener {
         if (item.getType() == Material.MUSHROOM_STEW && right) {
             e.setUseItemInHand(Event.Result.DENY);
             e.setUseInteractedBlock(Event.Result.DENY);
-            if (f.phase() == Fight.Phase.RUNNING && f.isAlive(u)) {
+            if (f.live() && f.isAlive(u)) {
                 soup(p);
             }
             return;
@@ -169,7 +170,7 @@ public final class CombatListener implements Listener {
             e.setUseItemInHand(Event.Result.DENY);
             e.setUseInteractedBlock(Event.Result.DENY);
             Ability ability = f.ability(u);
-            if (f.phase() == Fight.Phase.RUNNING && f.isAlive(u) && ability != null) {
+            if (f.live() && f.isAlive(u) && ability != null) {
                 plugin.abilities().use(p, f, ability);
             }
         }
@@ -191,6 +192,14 @@ public final class CombatListener implements Listener {
         Ui.sound(p, "entity.generic.drink", 1.3f);
     }
 
+    /** Angehalten (jemand fehlt): auch das Leben bleibt, wie es ist – niemand heilt sich in der Pause. */
+    @EventHandler(ignoreCancelled = true)
+    public void onRegain(EntityRegainHealthEvent e) {
+        if (e.getEntity() instanceof Player p && plugin.fights().of(p.getUniqueId()).filter(Fight::paused).isPresent()) {
+            e.setCancelled(true);
+        }
+    }
+
     @EventHandler(ignoreCancelled = true)
     public void onFood(FoodLevelChangeEvent e) {
         if (!(e.getEntity() instanceof Player p) || p.getWorld() != plugin.world()) {
@@ -209,7 +218,7 @@ public final class CombatListener implements Listener {
     @EventHandler(ignoreCancelled = true)
     public void onArrowPickup(PlayerPickupArrowEvent e) {
         Optional<Fight> f = plugin.fights().of(e.getPlayer().getUniqueId());
-        if (f.isEmpty() || f.get().phase() != Fight.Phase.RUNNING || !f.get().isAlive(e.getPlayer().getUniqueId())) {
+        if (f.isEmpty() || !f.get().live() || !f.get().isAlive(e.getPlayer().getUniqueId())) {
             e.setCancelled(true);
         }
     }
@@ -228,7 +237,7 @@ public final class CombatListener implements Listener {
             return;
         }
         Optional<Fight> f = plugin.fights().of(p.getUniqueId());
-        if (f.isEmpty() || f.get().phase() != Fight.Phase.RUNNING || !f.get().isAlive(p.getUniqueId())) {
+        if (f.isEmpty() || !f.get().live() || !f.get().isAlive(p.getUniqueId())) {
             e.setCancelled(true);
         }
     }

@@ -145,9 +145,10 @@ public final class Hall {
             case STATS -> plugin.menus().openStats(p);
             case LEAVE -> plugin.queues().leave(p.getUniqueId(), true);
             case LOBBY -> {
+                // Eigener Wunsch: das Netzwerk fragt nach, wenn jemand gerade spielt (in der Halle spielt niemand).
                 p.sendMessage(Texts.msg(plugin.lang(p), "lobby.going"));
                 plugin.queues().leave(p.getUniqueId(), false);
-                plugin.net().toLobby(p, Texts.text(plugin.lang(p), "lobby.kick"));
+                plugin.net().askToLobby(p, Texts.text(plugin.lang(p), "lobby.kick"));
             }
             default -> {
             }
