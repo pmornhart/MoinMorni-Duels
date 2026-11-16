@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Echter Test von MoinMorni Duels: baut das Plugin und das Test-Netzwerk, richtet einen Paper-Server ein (offline,
+# Echter Test von Morni Duels: baut das Plugin und das Test-Netzwerk, richtet einen Paper-Server ein (offline,
 # eigener Port, RCON an), startet ihn, schickt Test-Spieler (mineflayer) durch alle Abläufe und hält ihn wieder an.
 #
 #   test/run.sh                 # alles
 #   KEEP=1 test/run.sh          # Server danach laufen lassen (zum Nachschauen)
 #   KEEP=1 SKIP_TEST=1 test/run.sh   # nur Server starten
 #
-# Erwartet (Vorgaben für die MoinMorni-Sandbox, alles per Umgebungsvariable änderbar):
+# Erwartet (Vorgaben für die Sandbox von morni.net, alles per Umgebungsvariable änderbar):
 #   DUELS_JAVA    Java 25 (Ordner; sonst die JDK 25 aus dem Cache, sonst JAVA_HOME)
 #   PAPER_JAR     Paper 26.1.2 (mineflayer kann bis 26.1)
 #   TEMPLATE      ein schon einmal gestarteter Paper-26.1.2-Ordner (libraries/, cache/, versions/ werden kopiert,
@@ -41,7 +41,7 @@ echo "== Bauen"
 (cd "$REPO" && mvn -q -B -f test/fake-network/pom.xml package)
 
 echo "== Server einrichten: $SERVER"
-mkdir -p "$SERVER/plugins/MoinMorniDuels" "$SERVER/plugins/MoinMorni"
+mkdir -p "$SERVER/plugins/MorniDuels" "$SERVER/plugins/MorniNet"
 if [ -d "$TEMPLATE" ] && [ ! -d "$SERVER/libraries" ]; then
   cp -r "$TEMPLATE/libraries" "$TEMPLATE/cache" "$TEMPLATE/versions" "$SERVER/" 2>/dev/null || true
 fi
@@ -67,11 +67,11 @@ simulation-distance=4
 max-players=20
 white-list=false
 enforce-whitelist=false
-motd=MoinMorni Duels Test
+motd=Morni Duels Test
 allow-flight=true
 EOF
 # Testwerte: kurzes Zeitlimit (Unentschieden prüfen), kurzes Nachspiel, kurze Herausforderung, 2 Kopien je Arena.
-cat > "$SERVER/plugins/MoinMorniDuels/config.yml" <<'EOF'
+cat > "$SERVER/plugins/MorniDuels/config.yml" <<'EOF'
 welt: duels
 arena-kopien: 2
 kampf:
@@ -91,14 +91,16 @@ suppe:
   heilung: 7.0
 EOF
 # Test-Netzwerk: Bert spricht Englisch, Anna und Bert sind eine Party (Anna führt).
-cat > "$SERVER/plugins/MoinMorni/fake.properties" <<'EOF'
+cat > "$SERVER/plugins/MorniNet/fake.properties" <<'EOF'
 lang.Bert=en
 party.Anna=Anna,Bert
 EOF
-rm -f "$SERVER/plugins/MoinMorni/calls.log"
-rm -rf "$SERVER/plugins/MoinMorniDuels/spieler" "$SERVER/plugins/MoinMorniDuels/rangliste.yml"
-cp "$REPO/target/MoinMorni-Duels.jar" "$SERVER/plugins/"
-cp "$REPO/test/fake-network/target/MoinMorni-FakeNetwork.jar" "$SERVER/plugins/"
+rm -f "$SERVER/plugins/MorniNet/calls.log"
+rm -rf "$SERVER/plugins/MorniDuels/spieler" "$SERVER/plugins/MorniDuels/rangliste.yml"
+# Alte Jars weg (auch solche mit früherem Namen), damit nie zwei Fassungen laden.
+rm -f "$SERVER"/plugins/*.jar
+cp "$REPO/target/Morni-Duels.jar" "$SERVER/plugins/"
+cp "$REPO/test/fake-network/target/MorniNet-FakeNetwork.jar" "$SERVER/plugins/"
 for jar in ${EXTRA_PLUGINS:-}; do
   cp "$jar" "$SERVER/plugins/"
 done
