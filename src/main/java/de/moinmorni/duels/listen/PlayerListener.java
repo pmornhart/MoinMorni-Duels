@@ -55,10 +55,14 @@ public final class PlayerListener implements Listener {
 
     // ---------- Kommen und Gehen ----------
 
-    /** Gleich in der Wartehalle ankommen (nicht erst in der Hauptwelt). */
+    /**
+     * Gleich in der Wartehalle ankommen (nicht erst in der Hauptwelt) – oder, wenn der Platz im Kampf noch frei ist,
+     * genau dort, wo man die Verbindung verloren hat.
+     */
     @EventHandler
     public void onSpawnLocation(AsyncPlayerSpawnLocationEvent e) {
-        e.setSpawnLocation(plugin.hall().spawn());
+        Location back = plugin.fights().returnSpot(e.getConnection().getProfile().getId());
+        e.setSpawnLocation(back != null ? back : plugin.hall().spawn());
     }
 
     @EventHandler
@@ -67,6 +71,10 @@ public final class PlayerListener implements Listener {
         Player p = e.getPlayer();
         plugin.data(p);
         plugin.board().remember(p.getUniqueId(), p.getName());
+        if (plugin.fights().rejoin(p)) {
+            plugin.stateChanged();
+            return;
+        }
         plugin.hall().enter(p);
         plugin.stateChanged();
         plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
@@ -77,6 +85,9 @@ public final class PlayerListener implements Listener {
             plugin.hall().checkLanguage(p);
             Ui.title(p, Texts.text(lang, "join.title"), Texts.text(lang, "join.subtitle"), 2000);
             p.sendMessage(Texts.msg(lang, "join.welcome"));
+            if (plugin.fights().missed(p.getUniqueId())) {
+                p.sendMessage(Texts.msg(lang, "fight.missed"));
+            }
             if (!plugin.ready()) {
                 p.sendMessage(Texts.msg(lang, "not-ready"));
             }
@@ -90,8 +101,11 @@ public final class PlayerListener implements Listener {
         UUID u = p.getUniqueId();
         plugin.queues().leave(u, false);
         plugin.challenges().clear(u);
-        plugin.fights().quit(p);
-        plugin.abilities().forget(u);
+        // Bleibt sein Platz im Kampf frei, behält er seine Abklingzeiten bis zum Wiederkommen.
+        if (!plugin.fights().quit(p)) {
+            plugin.abilities().forget(u);
+        }
+        plugin.net().forget(u);
         plugin.hall().forget(u);
         plugin.store().unload(u);
         lastClick.remove(u);
@@ -197,7 +211,7 @@ public final class PlayerListener implements Listener {
             Fight f = of.get();
             Location from = e.getFrom();
             Location to = e.getTo();
-            if (f.phase() == Fight.Phase.COUNTDOWN && f.isAlive(u)) {
+            if (f.frozen(u)) {
                 if (from.getX() != to.getX() || from.getZ() != to.getZ() || to.getY() > from.getY()) {
                     Location back = from.clone();
                     back.setYaw(to.getYaw());
@@ -238,7 +252,7 @@ public final class PlayerListener implements Listener {
         UUID u = p.getUniqueId();
         if (e.getCause() == PlayerTeleportEvent.TeleportCause.ENDER_PEARL) {
             Optional<Fight> f = plugin.fights().of(u);
-            if (f.isEmpty() || !f.get().isAlive(u) || f.get().phase() != Fight.Phase.RUNNING
+            if (f.isEmpty() || !f.get().isAlive(u) || !f.get().live()
                     || !f.get().arena().contains(e.getTo())) {
                 e.setCancelled(true);
             }

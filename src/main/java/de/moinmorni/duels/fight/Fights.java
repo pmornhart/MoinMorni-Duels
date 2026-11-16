@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import net.kyori.adventure.bossbar.BossBar;
 import net.kyori.adventure.text.Component;
@@ -42,6 +43,11 @@ import org.bukkit.potion.PotionEffect;
 /**
  * Kämpfe: starten (Arena belegen, Ausrüstung, Countdown), Ausscheiden (keine echten Tode – wer fallen würde, schaut
  * zu), Ende (Sieg, Niederlage, Unentschieden nach Zeitlimit), Wertung und Statistik, zurück in die Halle.
+ *
+ * <p>Verbindung mitten im Kampf weg: Der Platz bleibt {@code rueckkehr-sekunden} frei. Fehlt dadurch ein ganzes Team,
+ * hält der Kampf an (alle eingefroren, die Zeit steht) und zeigt „Warte auf …“; sonst (2 gegen 2) kämpft das Team
+ * weiter. Wer rechtzeitig zurückkommt, steht genau wieder dort (Leben, Ausrüstung, Ort), nach 3-2-1 geht es weiter.
+ * Wer nicht kommt, scheidet aus wie bisher (zählt als Niederlage).
  */
 public final class Fights {
 
@@ -53,11 +59,20 @@ public final class Fights {
     private static final long TICKS_PER_SECOND = 20L;
     private static final double SPECTATOR_REACH = 60.0;
     private static final int[] WARN_AT = {60, 30, 10};
+    /** Alle wieder da: so viele Sekunden 3-2-1, dann geht es weiter. */
+    private static final int RESUME_SECONDS = 3;
+    private static final long SECOND_MS = 1000L;
+    /** So lange erfährt jemand beim nächsten Betreten noch, dass sein Kampf ohne ihn zu Ende ging. */
+    private static final long MISSED_MS = 15 * 60 * SECOND_MS;
 
     private final DuelsPlugin plugin;
     private final Map<UUID, Fight> byPlayer = new HashMap<>();
     private final Map<UUID, Fight> bySpectator = new HashMap<>();
     private final List<Fight> fights = new ArrayList<>();
+    /** Wo jemand stand, dessen Platz frei bleibt – für den Ort beim Betreten (wird außerhalb des Server-Takts gelesen). */
+    private final Map<UUID, Location> returnSpots = new ConcurrentHashMap<>();
+    /** Wer zu spät kam: sein Kampf ging ohne ihn zu Ende (Zeitpunkt, für einen Hinweis beim nächsten Betreten). */
+    private final Map<UUID, Long> missed = new HashMap<>();
     private int nextId = 1;
 
     public Fights(DuelsPlugin plugin) {
@@ -122,6 +137,7 @@ public final class Fights {
                 f.abilities.put(u, d.ability());
                 prepare(p, f, d);
                 p.teleportAsync(spawns.get(i % spawns.size()));
+                plugin.net().playing(p, true);
             }
         }
         for (UUID u : everyone) {
@@ -153,9 +169,27 @@ public final class Fights {
     // ------------------------------------------------------------------ Ablauf
 
     private void tick(Fight f) {
+        if (f.phase != Fight.Phase.ENDED) {
+            checkAway(f);
+            if (f.phase == Fight.Phase.ENDED) {
+                return;
+            }
+        }
         switch (f.phase) {
-            case COUNTDOWN -> countdown(f);
-            case RUNNING -> running(f);
+            case COUNTDOWN -> {
+                if (f.paused) {
+                    pausedTick(f);
+                } else {
+                    countdown(f);
+                }
+            }
+            case RUNNING -> {
+                if (f.paused) {
+                    pausedTick(f);
+                } else {
+                    running(f);
+                }
+            }
             case ENDED -> {
                 if (--f.afterLeft <= 0) {
                     cleanup(f);
@@ -219,6 +253,215 @@ public final class Fights {
         }
     }
 
+    // ------------------------------------------------------------------ Verbindung weg, wiederkommen
+
+    /** Verbindung weg mitten im Kampf: Stand merken, Platz freihalten, ggf. anhalten. */
+    private void hold(Fight f, Player p, int seconds) {
+        UUID u = p.getUniqueId();
+        f.away.put(u, new Fight.Away(System.currentTimeMillis() + seconds * SECOND_MS, PlayerState.of(p)));
+        returnSpots.put(u, p.getLocation().clone());
+        plugin.net().holdSlot(u, seconds);
+        updatePause(f);
+        String name = f.name(u);
+        String key = f.paused ? "fight.away" : "fight.away.on";
+        broadcast(f, key, lang -> new TagResolver[] {Placeholder.unparsed("victim", name),
+                Placeholder.unparsed("n", String.valueOf(seconds))});
+    }
+
+    /** Fehlt von Team {@code t} gerade jeder (alle Lebenden haben die Verbindung verloren)? */
+    private boolean teamGone(Fight f, int t) {
+        boolean away = false;
+        for (UUID u : f.teams.get(t)) {
+            if (!f.alive.contains(u)) {
+                continue;
+            }
+            if (f.away.containsKey(u)) {
+                away = true;
+            } else if (plugin.getServer().getPlayer(u) != null) {
+                return false;
+            }
+        }
+        return away;
+    }
+
+    /** Anhalten, solange ein Team ganz fehlt; sind wieder alle da: 3-2-1, dann weiter. */
+    private void updatePause(Fight f) {
+        if (f.phase == Fight.Phase.ENDED) {
+            return;
+        }
+        if (teamGone(f, 0) || teamGone(f, 1)) {
+            if (!f.paused) {
+                f.paused = true;
+                f.pausedAt = System.currentTimeMillis();
+            }
+            f.resumeIn = 0;
+            showWaiting(f);
+        } else if (f.paused && f.resumeIn == 0) {
+            if (f.phase == Fight.Phase.COUNTDOWN) {
+                // Noch vor dem Start: der Countdown beginnt einfach von vorn.
+                f.paused = false;
+                f.countdown = plugin.settings().countdownSeconds();
+            } else {
+                f.resumeIn = RESUME_SECONDS + 1;
+            }
+        }
+    }
+
+    /** Jede Sekunde, solange angehalten: „Warte auf …“ oder der Countdown bis es weitergeht. */
+    private void pausedTick(Fight f) {
+        if (f.resumeIn > 0) {
+            int n = --f.resumeIn;
+            if (n == 0) {
+                resume(f);
+                return;
+            }
+            forEachParticipant(f, p -> {
+                String lang = plugin.lang(p);
+                Component num = Component.text(String.valueOf(n), TextColor.color(Texts.GOLD), TextDecoration.BOLD);
+                Ui.title(p, num, Texts.text(lang, "fight.resume.sub"), 900);
+                Ui.sound(p, "block.note_block.pling", 0.8f + 0.2f * (4 - Math.min(3, n)));
+            });
+            return;
+        }
+        showWaiting(f);
+    }
+
+    /** Weiter geht's: die Uhr läuft dort weiter, wo sie stand. */
+    private void resume(Fight f) {
+        f.paused = false;
+        f.resumeIn = 0;
+        if (f.phase != Fight.Phase.RUNNING) {
+            return;
+        }
+        f.startedAt += System.currentTimeMillis() - f.pausedAt;
+        forEachParticipant(f, p -> {
+            String lang = plugin.lang(p);
+            Ui.title(p, Texts.text(lang, "fight.resume.go"), Component.empty(), 700);
+            Ui.sound(p, "block.note_block.bell", 1.6f);
+        });
+        updateBars(f, timeLeft(f));
+    }
+
+    private long timeLeft(Fight f) {
+        return plugin.settings().timeLimitSeconds() - (System.currentTimeMillis() - f.startedAt) / SECOND_MS;
+    }
+
+    /** „Warte auf Anna – 25 s“: in der Aktionsleiste und (im Kampf) in der Leiste oben. */
+    private void showWaiting(Fight f) {
+        long now = System.currentTimeMillis();
+        List<String> names = new ArrayList<>();
+        long until = now;
+        for (int t = 0; t < 2; t++) {
+            if (!teamGone(f, t)) {
+                continue;
+            }
+            for (UUID u : f.teams.get(t)) {
+                Fight.Away a = f.away.get(u);
+                if (a != null && f.alive.contains(u)) {
+                    names.add(f.name(u));
+                    until = Math.max(until, a.until());
+                }
+            }
+        }
+        if (names.isEmpty()) {
+            return;
+        }
+        String who = String.join(" & ", names);
+        String secs = String.valueOf((until - now + SECOND_MS - 1) / SECOND_MS);
+        TagResolver[] r = {Placeholder.unparsed("name", who), Placeholder.unparsed("n", secs)};
+        if (f.phase == Fight.Phase.RUNNING) {
+            for (String lang : new String[] {"de", "en"}) {
+                BossBar bar = bar(f, lang);
+                bar.name(Texts.text(lang, "fight.waiting.bar", r));
+                bar.color(BossBar.Color.YELLOW);
+            }
+        }
+        List<UUID> all = new ArrayList<>(f.participants());
+        all.addAll(f.spectators);
+        for (UUID u : all) {
+            Player p = plugin.getServer().getPlayer(u);
+            if (p != null && (byPlayer.get(u) == f || bySpectator.get(u) == f) && !f.away.containsKey(u)) {
+                p.sendActionBar(Texts.text(plugin.lang(p), "fight.waiting", r));
+            }
+        }
+    }
+
+    /** Frist abgelaufen: wer bis jetzt nicht zurück ist, scheidet aus (zählt wie Verlassen). */
+    private void checkAway(Fight f) {
+        long now = System.currentTimeMillis();
+        for (UUID u : List.copyOf(f.away.keySet())) {
+            Fight.Away a = f.away.get(u);
+            if (a == null || a.until() > now) {
+                continue;
+            }
+            dropAway(f, u);
+            eliminate(f, u, null, f.recentDamager(u, now), Fight.Cause.GONE);
+            if (f.phase == Fight.Phase.ENDED) {
+                return;
+            }
+        }
+    }
+
+    /** Platz nicht mehr frei halten (Frist um oder Kampf vorbei); beim nächsten Betreten gibt es einen Hinweis. */
+    private void dropAway(Fight f, UUID u) {
+        if (f.away.remove(u) == null) {
+            return;
+        }
+        returnSpots.remove(u);
+        long now = System.currentTimeMillis();
+        missed.values().removeIf(at -> now - at > MISSED_MS);
+        missed.put(u, now);
+        plugin.net().holdSlot(u, 0);
+    }
+
+    /** Ort beim Betreten für jemanden, dessen Platz frei ist (null = normal in die Halle). Darf von überall gerufen werden. */
+    public Location returnSpot(UUID u) {
+        Location l = returnSpots.get(u);
+        return l == null ? null : l.clone();
+    }
+
+    /**
+     * Beim Betreten: Wird ein Platz frei gehalten, kommt der Spieler genau dorthin zurück (Ort, Leben, Ausrüstung) und
+     * der Kampf geht nach 3-2-1 weiter. false = kein Platz frei (dann in die Halle).
+     */
+    public boolean rejoin(Player p) {
+        UUID u = p.getUniqueId();
+        returnSpots.remove(u);
+        Fight f = byPlayer.get(u);
+        Fight.Away a = f == null ? null : f.away.remove(u);
+        if (a == null) {
+            return false;
+        }
+        missed.remove(u);
+        String lang = plugin.lang(p);
+        a.state().restore(p);
+        Hall.attackSpeed(p, f.kit == Kit.KLASSISCH ? NO_COOLDOWN : DEFAULT_ATTACK_SPEED);
+        plugin.net().holdSlot(u, 0);
+        plugin.net().playing(p, true);
+        if (f.phase == Fight.Phase.RUNNING) {
+            p.showBossBar(bar(f, lang));
+        }
+        Ui.title(p, Texts.text(lang, "fight.welcome-back.title"), Texts.text(lang, "fight.welcome-back.sub"), 2000);
+        p.sendMessage(Texts.msg(lang, "fight.welcome-back"));
+        String name = p.getName();
+        List<UUID> others = new ArrayList<>(f.participants());
+        others.addAll(f.spectators);
+        for (UUID o : others) {
+            Player q = plugin.getServer().getPlayer(o);
+            if (q != null && !o.equals(u) && (byPlayer.get(o) == f || bySpectator.get(o) == f)) {
+                q.sendMessage(Texts.msg(plugin.lang(q), "fight.returned", Placeholder.unparsed("name", name)));
+            }
+        }
+        updatePause(f);
+        return true;
+    }
+
+    /** Kam {@code u} zu spät zurück (Kampf ging ohne ihn zu Ende)? Gibt es nur einmal. */
+    public boolean missed(UUID u) {
+        Long at = missed.remove(u);
+        return at != null && System.currentTimeMillis() - at <= MISSED_MS;
+    }
+
     private BossBar bar(Fight f, String lang) {
         return f.bars.computeIfAbsent(lang, l -> BossBar.bossBar(Component.empty(), 1f, BossBar.Color.GREEN,
                 BossBar.Overlay.NOTCHED_10));
@@ -246,7 +489,11 @@ public final class Fights {
 
     /** Jemand scheidet aus (besiegt, gestürzt, verlassen, aufgegeben). */
     public void eliminate(Fight f, Player victim, UUID killer, Fight.Cause cause) {
-        UUID v = victim.getUniqueId();
+        eliminate(f, victim.getUniqueId(), victim, killer, cause);
+    }
+
+    /** Wie oben; {@code victim} ist null, wenn die Person nicht mehr da ist (Frist nach Verbindungsabbruch um). */
+    private void eliminate(Fight f, UUID v, Player victim, UUID killer, Fight.Cause cause) {
         if (f.phase == Fight.Phase.ENDED || !f.alive.remove(v)) {
             return;
         }
@@ -262,20 +509,26 @@ public final class Fights {
             case QUIT -> "fight.quit";
             case LEFT -> "fight.left";
             case FORFEIT -> "fight.forfeit";
+            case GONE -> "fight.away.gone";
         };
         String victimName = f.name(v);
         String killerName = credited == null ? "" : f.name(credited);
         broadcast(f, key, lang -> new TagResolver[] {Placeholder.unparsed("victim", victimName),
                 Placeholder.unparsed("killer", killerName)});
-        if (cause == Fight.Cause.FORFEIT || cause == Fight.Cause.QUIT || cause == Fight.Cause.LEFT) {
+        if (cause == Fight.Cause.FORFEIT || cause == Fight.Cause.QUIT || cause == Fight.Cause.LEFT
+                || cause == Fight.Cause.GONE) {
             f.gaveUp.add(v);
             byPlayer.remove(v);
-            hideBars(f, victim);
-            if (cause == Fight.Cause.FORFEIT) {
-                victim.sendMessage(Texts.msg(plugin.lang(victim), "fight.gave-up"));
-                plugin.hall().enter(victim);
+            if (victim != null) {
+                hideBars(f, victim);
+                plugin.net().playing(victim, false);
+                if (cause == Fight.Cause.FORFEIT) {
+                    victim.sendMessage(Texts.msg(plugin.lang(victim), "fight.gave-up"));
+                    plugin.hall().enter(victim);
+                }
             }
-        } else {
+        } else if (victim != null) {
+            plugin.net().playing(victim, false);
             String lang = plugin.lang(victim);
             Location to = cause == Fight.Cause.VOID ? f.arena.viewPoint() : victim.getLocation().add(0, 1.5, 0);
             victim.getInventory().clear();
@@ -304,6 +557,7 @@ public final class Fights {
             }
         }
         checkEnd(f);
+        updatePause(f);
     }
 
     private void checkEnd(Fight f) {
@@ -324,6 +578,11 @@ public final class Fights {
         f.phase = Fight.Phase.ENDED;
         f.winner = winner;
         f.afterLeft = plugin.settings().afterSeconds();
+        for (UUID u : List.copyOf(f.away.keySet())) {
+            dropAway(f, u);
+        }
+        f.paused = false;
+        f.resumeIn = 0;
         double[] avg = {average(f, 0), average(f, 1)};
         int k = plugin.settings().kFactor();
         for (UUID u : f.participants()) {
@@ -344,6 +603,7 @@ public final class Fights {
             if (p == null) {
                 continue;
             }
+            plugin.net().playing(p, false);
             String lang = plugin.lang(p);
             String t = switch (r) {
                 case WIN -> "fight.win";
@@ -491,12 +751,20 @@ public final class Fights {
 
     // ------------------------------------------------------------------ Verlassen, Zuschauen
 
-    /** Spieler hat das Spiel verlassen. */
-    public void quit(Player p) {
+    /**
+     * Spieler hat das Spiel verlassen. Mitten im Kampf bleibt sein Platz {@code rueckkehr-sekunden} frei (true); ist das
+     * aus (0), scheidet er sofort aus wie bisher.
+     */
+    public boolean quit(Player p) {
         UUID u = p.getUniqueId();
         Fight f = byPlayer.get(u);
+        boolean held = false;
         if (f != null) {
-            if (f.phase != Fight.Phase.ENDED && f.alive.contains(u)) {
+            int seconds = plugin.settings().returnSeconds();
+            if (f.phase != Fight.Phase.ENDED && f.alive.contains(u) && !f.away.containsKey(u) && seconds > 0) {
+                hold(f, p, seconds);
+                held = true;
+            } else if (f.phase != Fight.Phase.ENDED && f.alive.contains(u)) {
                 eliminate(f, p, f.recentDamager(u, System.currentTimeMillis()), Fight.Cause.QUIT);
             } else {
                 byPlayer.remove(u);
@@ -508,6 +776,7 @@ public final class Fights {
             w.spectators.remove(u);
             hideBars(w, p);
         }
+        return held;
     }
 
     /**
@@ -601,6 +870,9 @@ public final class Fights {
             if (f.task != null) {
                 f.task.cancel();
             }
+            for (UUID u : List.copyOf(f.away.keySet())) {
+                dropAway(f, u);
+            }
             fights.remove(f);
             List<UUID> all = new ArrayList<>(f.participants());
             all.addAll(f.spectators);
@@ -611,6 +883,7 @@ public final class Fights {
                 Player p = plugin.getServer().getPlayer(u);
                 if (p != null) {
                     hideBars(f, p);
+                    plugin.net().playing(p, false);
                     plugin.hall().enter(p);
                 }
             }

@@ -188,7 +188,7 @@ public final class Abilities {
             }
             Fight f = of.get();
             Ability a = f.ability(p.getUniqueId());
-            if (f.kit() != Kit.FAEHIGKEITEN || f.phase() != Fight.Phase.RUNNING || !f.isAlive(p.getUniqueId())
+            if (f.kit() != Kit.FAEHIGKEITEN || !f.live() || !f.isAlive(p.getUniqueId())
                     || a == null) {
                 continue;
             }

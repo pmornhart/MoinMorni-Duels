@@ -216,6 +216,27 @@ public final class Texts {
         t("fight.nothing", "<gray>Du bist gerade in keinem Kampf und in keiner Warteschlange.</gray>", "<gray>You are not in a fight or a queue right now.</gray>");
         t("fight.back-hall", "<gray>Zurück in der Wartehalle.</gray>", "<gray>Back in the waiting hall.</gray>");
 
+        // ---------- Verbindung weg, wiederkommen ----------
+        t("fight.away", "<white><victim></white> <gray>hat die Verbindung verloren – der Kampf ist angehalten. Wir warten bis zu <white><n></white> Sekunden.</gray>",
+                "<white><victim></white> <gray>lost the connection – the fight is paused. We'll wait up to <white><n></white> seconds.</gray>");
+        t("fight.away.on", "<white><victim></white> <gray>hat die Verbindung verloren – der Platz bleibt <white><n></white> Sekunden frei, der Kampf geht weiter.</gray>",
+                "<white><victim></white> <gray>lost the connection – their place stays free for <white><n></white> seconds, the fight goes on.</gray>");
+        t("fight.away.gone", "<white><victim></white> <gray>ist nicht rechtzeitig zurückgekommen.</gray>",
+                "<white><victim></white> <gray>didn't make it back in time.</gray>");
+        t("fight.waiting", "<au>⏳</au> <gray>Warte auf</gray> <white><name></white> <dark_gray>–</dark_gray> <au><n> s</au>",
+                "<au>⏳</au> <gray>Waiting for</gray> <white><name></white> <dark_gray>–</dark_gray> <au><n> s</au>");
+        t("fight.waiting.bar", "<au>⏳ Warte auf</au> <white><name></white> <dark_gray>–</dark_gray> <au><n> s</au>",
+                "<au>⏳ Waiting for</au> <white><name></white> <dark_gray>–</dark_gray> <au><n> s</au>");
+        t("fight.resume.sub", "<gray>Gleich geht es weiter …</gray>", "<gray>Resuming in a moment …</gray>");
+        t("fight.resume.go", "<em>Weiter!</em>", "<em>Fight on!</em>");
+        t("fight.welcome-back.title", "<em>Willkommen zurück!</em>", "<em>Welcome back!</em>");
+        t("fight.welcome-back.sub", "<gray>Dein Kampf geht weiter.</gray>", "<gray>Your fight goes on.</gray>");
+        t("fight.welcome-back", "<gray>Willkommen zurück! Du stehst wieder, wo du warst – mit deinem Leben und deiner Ausrüstung.</gray>",
+                "<gray>Welcome back! You're right where you were – same health, same gear.</gray>");
+        t("fight.returned", "<white><name></white> <gray>ist wieder da.</gray>", "<white><name></white> <gray>is back.</gray>");
+        t("fight.missed", "<gray>Willkommen zurück! Dein Kampf ist inzwischen zu Ende – dein Ergebnis steht in <white>/stats</white>.</gray>",
+                "<gray>Welcome back! Your fight is over by now – see <white>/stats</white> for the result.</gray>");
+
         // ---------- Herausforderung ----------
         t("duel.usage", "<gray>So geht's: <white>/duel \\<spieler> [klassisch|modern|fähigkeiten]</white> · <white>/duel annehmen</white> · <white>/duel ablehnen</white></gray>",
                 "<gray>Usage: <white>/duel \\<player> [classic|modern|abilities]</white> · <white>/duel accept</white> · <white>/duel deny</white></gray>");

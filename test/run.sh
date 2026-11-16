@@ -70,8 +70,10 @@ enforce-whitelist=false
 motd=MoinMorni Duels Test
 allow-flight=true
 EOF
-# Testwerte: kurzes Zeitlimit (Unentschieden prüfen), kurzes Nachspiel, kurze Herausforderung, 2 Kopien je Arena.
+# Testwerte: kurzes Zeitlimit (Unentschieden prüfen), kurzes Nachspiel, kurze Herausforderung, 2 Kopien je Arena,
+# Platz nach Verbindungsabbruch 12 Sekunden frei.
 cat > "$SERVER/plugins/MoinMorniDuels/config.yml" <<'EOF'
+rueckkehr-sekunden: 12
 welt: duels
 arena-kopien: 2
 kampf:

@@ -10,7 +10,8 @@ Pilzsuppe, **Modern** oder mit **Fähigkeiten**, **locker** oder **gewertet**. E
   Smaragd in der Mitte, Banner in Smaragd, Gold und Weiß-Blau, Tribüne mit Zeltdach, Schmiede und Brotzeit-Stand.
   Schwebende Schrift zeigt die Ranglisten – jeder sieht sie in seiner Sprache.
 - **Knöpfe in der Schnellleiste:** Schwert = Kampf wählen (Rechtsklick auf einen Spieler = herausfordern),
-  Amboss = Kit bearbeiten, Gold = Rangliste & Statistik, Bett = zurück zur Lobby. Alle Menüs sind Truhen und gehen
+  Amboss = Kit bearbeiten, Gold = Rangliste & Statistik, Bett = zurück zur Lobby (das Netzwerk fragt nach, wenn
+  jemand mitten im Spiel ist). Alle Menüs sind Truhen und gehen
   auch mit Bedrock (Geyser).
 - **Kampfarten**
 
@@ -27,8 +28,12 @@ Pilzsuppe, **Modern** oder mit **Fähigkeiten**, **locker** oder **gewertet**. E
   (`arena-kopien`), so laufen viele Kämpfe gleichzeitig. Alles wird beim ersten Start aus dem Code gebaut (eigene
   leere Welt `duels`).
 - **Kampfablauf:** Countdown 3-2-1 (eingefroren), Kampf, niemand stirbt wirklich – wer fallen würde, scheidet aus und
-  schaut zu. Sieg, wenn das andere Team draußen ist; Verbindung weg oder `/verlassen` = Niederlage; nach 10 Minuten
-  unentschieden. 10 Sekunden später geht es zurück in den Turnierhof. Nichts fällt herunter, niemand baut.
+  schaut zu. Sieg, wenn das andere Team draußen ist; `/verlassen` = Niederlage; nach 10 Minuten unentschieden.
+  10 Sekunden später geht es zurück in den Turnierhof. Nichts fällt herunter, niemand baut.
+- **Zurück ins Spiel:** Verbindung mitten im Kampf weg (Spiel abgestürzt, Internet weg)? Der Platz bleibt 30 Sekunden
+  frei (`rueckkehr-sekunden`). Fehlt dadurch ein ganzes Team, hält der Kampf an – alle eingefroren, die Uhr steht,
+  „Warte auf …“; im 2 gegen 2 kämpft das Team weiter. Wer rechtzeitig zurückkommt, steht genau wieder dort, mit
+  demselben Leben und derselben Ausrüstung, nach 3-2-1 geht es weiter. Wer nicht kommt, hat verloren.
 - **Kit-Editor:** jede Ausrüstung (Klassisch, Modern, jede Fähigkeit) lässt sich selbst anordnen – gilt ab dem
   nächsten Kampf.
 - **Wertung und Statistik:** Elo je Kampfart (Start 1000, K-Faktor 32), Siege, Niederlagen, Unentschieden, Kills, Tode,
@@ -53,6 +58,11 @@ Das Netzwerk-Plugin („MoinMorni“) stellt die Schnittstelle `de.moinmorni.api
 sie da ist (`softdepend`): Sprache der Spieler, Party, Statistik, Zustand für Lobby-Figur und Webseite, zurück zur
 Lobby. Ohne Netzwerk: deutsche Texte, Statistik nur lokal, „zur Lobby“ trennt die Verbindung mit einem Hinweis.
 
+Ab Schnittstelle 2 meldet Duels außerdem, wer gerade spielt (`playing`: vom Countdown bis zum Ausscheiden oder zum
+Ende), hält nach einem Verbindungsabbruch den Platz frei (`holdSlot`: die Lobby bietet „Zurück ins Spiel“ an, `0` nimmt
+das Angebot zurück) und schickt mit dem Bett über `askToLobby` – das Netzwerk fragt nach, wenn jemand mitten im Spiel
+ist. Ein älteres Netzwerk-Plugin kennt das nicht; dann läuft alles wie bisher.
+
 Statistik nach jedem Kampf (`stats("duels", …)`):
 
 - hochgezählt: `games`, `wins`, `losses`, `draws`, `kills`, `deaths`, je Kampfart `games_<kampfart>`,
@@ -75,14 +85,15 @@ test/run.sh                      # echter Test: Paper-Server + Test-Spieler (min
 `test/run.sh` baut das Plugin und ein Test-Netzwerk (`test/fake-network`: tut so, als wäre es das Netzwerk-Plugin –
 Bert spricht Englisch, Anna und Bert sind eine Party, alle Meldungen landen in `calls.log`), richtet einen
 Paper-26.1.2-Server ein (offline, Port 25720, RCON 25820) und schickt vier Test-Spieler durch Halle, Menüs,
-Kit-Editor, Warteschlangen, Kämpfe, Suppe, Fähigkeiten, Herausforderungen, Zuschauen, Party-2v2, Unentschieden und
-Statistik (`test/duels-test.cjs`). Pfade und Ports lassen sich per Umgebung ändern (siehe Kopf von `test/run.sh`),
+Kit-Editor, Warteschlangen, Kämpfe, Suppe, Fähigkeiten, Herausforderungen, Zuschauen, Party-2v2, Unentschieden,
+Statistik und Verbindungsabbrüche (rechtzeitig zurück, zu lange weg, 2 gegen 2) (`test/duels-test.cjs`). Pfade und Ports lassen sich per Umgebung ändern (siehe Kopf von `test/run.sh`),
 auch für Paper 26.3 über ViaBackwards (`NO_MOVE=1`).
 
 ## Einstellungen
 
-`plugins/MoinMorniDuels/config.yml`: Welt, Arena-Kopien, Zeitlimit, Countdown, Nachspiel, Ablauf von
-Herausforderungen, Elo (Start, K-Faktor, Spanne) und Suppen-Heilung – mit Erklärungen in der Datei. Den Duels-Ordner
+`plugins/MoinMorniDuels/config.yml`: Rückkehr nach Verbindungsabbruch, Welt, Arena-Kopien, Zeitlimit, Countdown,
+Nachspiel, Ablauf von Herausforderungen, Elo (Start, K-Faktor, Spanne) und Suppen-Heilung – mit Erklärungen in der
+Datei. Den Duels-Ordner
 aus Version 0.1.1 (`plugins/MorniDuels`) holt das Plugin beim ersten Start von selbst zurück – Spielerdaten,
 Rangliste und Einstellungen bleiben.
 
