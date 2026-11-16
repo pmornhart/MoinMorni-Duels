@@ -16,11 +16,16 @@ import java.util.UUID;
 import net.kyori.adventure.bossbar.BossBar;
 import org.bukkit.scheduler.BukkitTask;
 
-/** Ein laufender Kampf: zwei Teams in einer Arena. */
+/**
+ * Ein laufender Kampf: zwei (oder bei „Jeder gegen jeden“ mehr) Teams in einer Arena, eine oder mehrere Runden.
+ */
 public final class Fight {
 
-    /** Countdown (eingefroren) → Kampf → Nachspiel (alle unverwundbar, dann zurück in die Halle). */
-    public enum Phase { COUNTDOWN, RUNNING, ENDED }
+    /**
+     * Countdown (eingefroren) → Kampf → Pause zwischen zwei Runden → … → Nachspiel (alle unverwundbar, dann zurück
+     * in die Halle).
+     */
+    public enum Phase { COUNTDOWN, RUNNING, BREAK, ENDED }
 
     /**
      * Wie jemand ausgeschieden ist (LEFT = in eine andere Welt gewechselt, GONE = Verbindung weg und nicht rechtzeitig
@@ -32,6 +37,18 @@ public final class Fight {
     record Away(long until, PlayerState state) {
     }
 
+    /** Wie der Kampf zustande kam. */
+    public enum Kind {
+        /** Aus der Warteschlange (locker oder gewertet). */
+        QUEUE,
+        /** Herausforderung mit /duel (1 gegen 1). */
+        DUEL,
+        /** Party gegen Party (Herausforderung zwischen zwei Party-Leitungen). */
+        PARTY,
+        /** Party: Jeder gegen jeden. */
+        FFA
+    }
+
     /** So lange zählt ein Treffer noch als „wer war's“ (z. B. bei einem Sturz in die Tiefe). */
     static final long CREDIT_MS = 15_000L;
 
@@ -40,12 +57,18 @@ public final class Fight {
     final boolean ranked;
     final int size;
     final boolean challenge;
+    final Kind kind;
     final Arena arena;
     final List<List<UUID>> teams;
+    final Tally tally;
     final Set<UUID> alive = new HashSet<>();
     final Set<UUID> gaveUp = new HashSet<>();
     final Map<UUID, Integer> kills = new HashMap<>();
     final Map<UUID, Integer> deaths = new HashMap<>();
+    final Map<UUID, Integer> hits = new HashMap<>();
+    final Map<UUID, Integer> goals = new HashMap<>();
+    /** Labyrinth: wie oft jemand als Erstes am Ziel war. */
+    final Map<UUID, Integer> finishes = new HashMap<>();
     final Map<UUID, UUID> lastDamager = new HashMap<>();
     final Map<UUID, Long> lastDamageAt = new HashMap<>();
     final Map<UUID, Integer> eloBefore = new HashMap<>();
@@ -54,10 +77,14 @@ public final class Fight {
     final Map<UUID, Ability> abilities = new HashMap<>();
     final Set<UUID> spectators = new HashSet<>();
     final Map<String, BossBar> bars = new HashMap<>();
+    /** Von Spielern gesetzte Blöcke (nur die dürfen wieder abgebaut werden), als Schlüssel x/y/z. */
+    final Set<Long> placed = new HashSet<>();
     /** Schon angesagte Restzeiten (60, 30, 10 Sekunden). */
     final Set<Integer> warned = new HashSet<>();
     /** Wer gerade die Verbindung verloren hat und noch zurückkommen darf. */
     final Map<UUID, Away> away = new LinkedHashMap<>();
+    /** Kommt beim Wiederkommen frisch an den Start (inzwischen neue Runde oder ein Tor), statt genau dorthin. */
+    final Set<UUID> fresh = new HashSet<>();
     /** Angehalten, weil ein Team gerade ganz fehlt: alle eingefroren, die Zeit steht. */
     boolean paused;
     long pausedAt;
@@ -67,17 +94,21 @@ public final class Fight {
     int countdown;
     long startedAt;
     int afterLeft;
+    int breakLeft;
+    int round = 1;
     int winner = -2;
     BukkitTask task;
 
-    Fight(int id, Kit kit, boolean ranked, boolean challenge, Arena arena, List<UUID> a, List<UUID> b) {
+    Fight(int id, Kit kit, boolean ranked, Kind kind, int bestOf, Arena arena, List<List<UUID>> teams) {
         this.id = id;
         this.kit = kit;
         this.ranked = ranked;
-        this.challenge = challenge;
+        this.kind = kind;
+        this.challenge = kind != Kind.QUEUE;
         this.arena = arena;
-        this.size = Math.max(a.size(), b.size());
-        this.teams = List.of(List.copyOf(a), List.copyOf(b));
+        this.teams = teams.stream().map(List::copyOf).toList();
+        this.size = this.teams.stream().mapToInt(List::size).max().orElse(1);
+        this.tally = new Tally(this.teams.size(), kit.rounds() ? bestOf : 1);
     }
 
     public Kit kit() {
@@ -88,12 +119,20 @@ public final class Fight {
         return ranked;
     }
 
+    public Kind kind() {
+        return kind;
+    }
+
     public Arena arena() {
         return arena;
     }
 
     public Phase phase() {
         return phase;
+    }
+
+    public Tally tally() {
+        return tally;
     }
 
     public QueueKey key() {
@@ -118,12 +157,18 @@ public final class Fight {
         return paused;
     }
 
-    /** 0 oder 1, -1 = gehört nicht dazu. */
+    /** Index des Teams (0, 1 …), -1 = gehört nicht dazu. */
     public int team(UUID u) {
-        if (teams.get(0).contains(u)) {
-            return 0;
+        for (int t = 0; t < teams.size(); t++) {
+            if (teams.get(t).contains(u)) {
+                return t;
+            }
         }
-        return teams.get(1).contains(u) ? 1 : -1;
+        return -1;
+    }
+
+    public int teamCount() {
+        return teams.size();
     }
 
     public boolean sameTeam(UUID a, UUID b) {
@@ -132,14 +177,24 @@ public final class Fight {
     }
 
     public List<UUID> participants() {
-        List<UUID> all = new ArrayList<>(teams.get(0));
-        all.addAll(teams.get(1));
+        List<UUID> all = new ArrayList<>();
+        teams.forEach(all::addAll);
         return all;
     }
 
+    /** Alle aus den anderen Teams. */
     public List<UUID> opponents(UUID u) {
         int t = team(u);
-        return t < 0 ? List.of() : teams.get(1 - t);
+        if (t < 0) {
+            return List.of();
+        }
+        List<UUID> out = new ArrayList<>();
+        for (int i = 0; i < teams.size(); i++) {
+            if (i != t) {
+                out.addAll(teams.get(i));
+            }
+        }
+        return out;
     }
 
     /** Gewählte Fähigkeit (Kit „Fähigkeiten“), festgelegt beim Start. */
@@ -160,6 +215,23 @@ public final class Fight {
     public void hit(UUID victim, UUID attacker, long now) {
         lastDamager.put(victim, attacker);
         lastDamageAt.put(victim, now);
+    }
+
+    /** Hat ein Spieler diesen Block in diesem Kampf gesetzt? */
+    public boolean placed(int x, int y, int z) {
+        return placed.contains(blockKey(x, y, z));
+    }
+
+    public void placedAdd(int x, int y, int z) {
+        placed.add(blockKey(x, y, z));
+    }
+
+    public void placedRemove(int x, int y, int z) {
+        placed.remove(blockKey(x, y, z));
+    }
+
+    static long blockKey(int x, int y, int z) {
+        return ((long) x & 0x3FFFFFFL) << 38 | ((long) z & 0x3FFFFFFL) << 12 | ((long) y & 0xFFFL);
     }
 
     String name(UUID u) {

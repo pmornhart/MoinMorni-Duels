@@ -12,6 +12,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const mineflayer = require('mineflayer');
+const { Vec3 } = require('vec3');
 const { rcon } = require('./rcon.cjs');
 
 const [HOST = '127.0.0.1', PORT = '25720', RCON = '127.0.0.1:25820', PASS_FILE, SERVER] = process.argv.slice(2);
@@ -191,6 +192,62 @@ async function fightUntilDown(attacker, victim, swordSlot) {
   return victim.game.gameMode === 'spectator';
 }
 
+/** Herausforderung schicken, annehmen und warten, bis der Kampf läuft. */
+async function duel(a, b, args) {
+  clear(a, b);
+  a.chat(`/duel ${b.username} ${args}`);
+  await waitFor(() => sees(b, /fordert dich zum Duell heraus|challenges you to a duel/), 4000);
+  b.chat(`/duel annehmen ${a.username}`);
+  const ok = await waitFor(() => inArena(a) && inArena(b), 8000);
+  await started(a);
+  return ok;
+}
+
+/** Warten, bis alle wieder in der Halle sind. */
+const allInHall = (...bots) => waitFor(() => bots.every(inHall), AFTER_MS + 8000);
+
+/** Bogen: Schütze stellt sich 6 Blöcke vor das Ziel, spannt voll und lässt los – bis das Ziel ausscheidet. */
+async function shootUntilDown(shooter, victim, bowSlot) {
+  shooter.setQuickBarSlot(bowSlot);
+  for (let i = 0; i < 25 && victim.game.gameMode !== 'spectator'; i++) {
+    const side = shooter.entity.position.z > victim.entity.position.z ? 1 : -1;
+    await cmd(`execute at ${victim.username} run tp ${shooter.username} ~ ~ ~${side * 6}`);
+    await sleep(300);
+    const target = shooter.players[victim.username]?.entity;
+    if (target) {
+      await shooter.lookAt(target.position.offset(0, 1.2, 0), true);
+      shooter.activateItem();
+      await sleep(1150);
+      shooter.deactivateItem();
+    }
+    await sleep(700);
+  }
+  return victim.game.gameMode === 'spectator';
+}
+
+/** Block per RCON prüfen (Welt „duels“). */
+async function blockIs(x, y, z, block) {
+  const out = (await cmd(`execute in minecraft:duels if block ${x} ${y} ${z} ${block}`)).join(' ');
+  return /passed/i.test(out);
+}
+
+/** Abbauen mit Zeitlimit (verweigert der Server, kommt mineflayer sonst nie zurück). */
+async function digSoon(bot, block, ms = 3000) {
+  try {
+    await Promise.race([bot.dig(block, true), sleep(ms)]);
+  } catch {
+    // abgebrochen – zählt wie nicht abgebaut
+  }
+  await sleep(300);
+}
+
+/** Party-Einstellungen im Test-Netzwerk austauschen (wird bei jedem Aufruf neu gelesen). */
+function parties(...lines) {
+  const file = path.join(SERVER, 'plugins/MoinMorni/fake.properties');
+  const keep = readFile(file).split('\n').filter((l) => l && !l.startsWith('party.'));
+  fs.writeFileSync(file, [...keep, ...lines].join('\n') + '\n');
+}
+
 async function main() {
   // ------------------------------------------------------------------ Ankunft
   const anna = await join('Anna');
@@ -235,20 +292,43 @@ async function main() {
   clear(anna, bert);
   win = await openWithItem(anna, 0);
   check('Schwert öffnet „Kampf wählen“', win && plain(win.title).includes('Kampf wählen'), win && plain(win.title));
-  check('Menü zeigt Locker/Gewertet × 1v1/2v2',
-    plain(win?.slots[12]?.customName).includes('Locker') && plain(win?.slots[16]?.customName).includes('Gewertet') &&
-      win?.slots[16]?.count === 2, plain(win?.slots[16]?.customName));
-  await anna.clickWindow(12, 0, 0);
+  check('Menü nach Gruppen: Klassisch, Modern, Spaß (je eine Reihe)',
+    plain(win?.slots[9]?.customName) === 'Klassisch' && plain(win?.slots[18]?.customName) === 'Modern' &&
+      plain(win?.slots[27]?.customName) === 'Spaß', [9, 18, 27].map((i) => plain(win?.slots[i]?.customName)).join(','));
+  const kitNames = (w, row) => [1, 2, 3, 4, 5, 6, 7, 8].map((c) => plain(w?.slots[row * 9 + c]?.customName)).filter(Boolean);
+  check('Klassisch: Klassisch, Nur Schwert, Ritter, Diamant, Bogen, Angel, Kombo',
+    kitNames(win, 1).join(',') === 'Klassisch,Nur Schwert,Ritter,Diamant,Bogen,Angel,Kombo', kitNames(win, 1).join(','));
+  check('Modern: Modern, Axt und Schild, Goldapfel, Tränke, Enderperlen, UHC, Bau-Kampf',
+    kitNames(win, 2).join(',') === 'Modern,Axt und Schild,Goldapfel,Tränke,Enderperlen,UHC,Bau-Kampf',
+    kitNames(win, 2).join(','));
+  check('Spaß: Fähigkeiten, Sumo, Boxen, Spleef, Labyrinth, Brücke',
+    kitNames(win, 3).join(',') === 'Fähigkeiten,Sumo,Boxen,Spleef,Labyrinth,Brücke', kitNames(win, 3).join(','));
+  check('Party-Knöpfe: Jeder gegen jeden, Party gegen Party',
+    plain(win?.slots[38]?.customName).includes('Jeder gegen jeden') && plain(win?.slots[42]?.customName).includes('Party gegen Party'));
+  let kitMenu = nextWindow(anna);
+  await anna.clickWindow(10, 0, 0);
+  win = await kitMenu;
+  check('Klick auf Klassisch: eigenes Menü mit Locker/Gewertet × 1v1/2v2',
+    win && plain(win.title).includes('Klassisch – Kampf wählen') &&
+      plain(win.slots[21]?.customName).includes('Locker') && plain(win.slots[25]?.customName).includes('Gewertet') &&
+      win.slots[25]?.count === 2, win && `${plain(win.title)} / ${plain(win.slots[25]?.customName)}`);
+  await anna.clickWindow(21, 0, 0);
   await sleep(500);
   check('Anna sucht (Klassisch · Locker · 1 gegen 1)', sees(anna, /Du suchst Gegner: Klassisch · Locker · 1 gegen 1/));
   check('Knopf „Warteschlange verlassen“ erscheint', slot(anna, 4)?.name === 'barrier', slot(anna, 4)?.name);
   check('Aktionsleiste: „Suche Gegner“ mit Zeit', await waitFor(() => anna.bars.some((b) => /Suche Gegner.*0:0\d/.test(b)), 2500),
     anna.bars.slice(-1)[0]);
   win = await openWithItem(bert, 0);
-  check('Englisches Menü: „Choose a fight“ / „Casual“', win && plain(win.title).includes('Choose a fight') &&
-    plain(win.slots[12]?.customName).includes('Casual'), win && plain(win.slots[12]?.customName));
+  const english = win && plain(win.title).includes('Choose a fight') && plain(win.slots[18]?.customName) === 'Modern' &&
+    plain(win.slots[27]?.customName) === 'Fun';
+  kitMenu = nextWindow(bert);
+  if (win) await bert.clickWindow(10, 0, 0);
+  win = await kitMenu;
+  check('Englisches Menü: „Choose a fight“, „Fun“, „Classic – choose a fight“ / „Casual“', english && win &&
+    plain(win.title).includes('Classic – choose a fight') && plain(win.slots[21]?.customName).includes('Casual'),
+    win && plain(win.slots[21]?.customName));
   const start1 = anna.entity.position.clone();
-  await bert.clickWindow(12, 0, 0);
+  await bert.clickWindow(21, 0, 0);
   const found = await waitFor(() => sees(anna, /Gegner gefunden: Bert/) && inArena(anna) && inArena(bert), 6000);
   check('Gegner gefunden → beide in einer Arena', found, `${JSON.stringify(anna.entity.position)}`);
   check('Bert liest Englisch: „Opponent found: Anna“', sees(bert, /Opponent found: Anna/));
@@ -327,10 +407,11 @@ async function main() {
     states.includes('running') && states.lastIndexOf('waiting') > states.indexOf('running'), states.join(','));
 
   win = await openWithItem(anna, 7);
-  check('Gold öffnet „Rangliste & Statistik“ mit eigenen Werten und Ranglisten',
-    win && plain(win.title).includes('Rangliste & Statistik') &&
-      plain(win.slots[11]?.customName).includes('Deine Werte') && plain(win.slots[20]?.customName).includes('Rangliste'),
-    win && `${plain(win.slots[11]?.customName)} / ${plain(win.slots[20]?.customName)}`);
+  const statsLore = win ? plain(win.slots[10]?.customLore) : '';
+  check('Gold öffnet „Rangliste & Statistik“ mit eigenen Werten und Ranglisten je Kampfart',
+    win && plain(win.title).includes('Rangliste & Statistik') && plain(win.slots[10]?.customName) === 'Klassisch' &&
+      statsLore.includes('Deine Werte') && statsLore.includes('Rangliste') && plain(win.slots[33]?.customName) === 'Brücke',
+    win && `${plain(win.slots[10]?.customName)} / ${statsLore.slice(0, 120)}`);
   if (win) anna.closeWindow(win);
   await sleep(300);
 
@@ -479,7 +560,7 @@ async function main() {
   win = await duelMenu;
   check('Rechtsklick auf Anna öffnet „Herausfordern: Anna“', win && plain(win.title).includes('Herausfordern: Anna'),
     win ? plain(win.title) : `Anna sichtbar: ${Boolean(annaEntity)}`);
-  if (win) await carl.clickWindow(11, 0, 0);
+  if (win) await carl.clickWindow(10, 0, 0);
   check('Anna bekommt die Herausforderung (Klassisch)', await waitFor(() => sees(anna, /Carl fordert dich zum Duell heraus: Klassisch/), 3000),
     anna.chats.join(' | '));
   anna.chat('/duel ablehnen');
@@ -568,8 +649,11 @@ async function main() {
   // ------------------------------------------------------------------ Fähigkeit wählen: Jäger (Pfeilhagel)
   clear(anna, bert2);
   win = await openWithItem(anna, 0);
-  const abilityMenu = nextWindow(anna);
+  const abilitiesKit = nextWindow(anna);
   if (win) await anna.clickWindow(28, 0, 0);
+  win = await abilitiesKit;
+  const abilityMenu = nextWindow(anna);
+  if (win) await anna.clickWindow(19, 0, 0);
   win = await abilityMenu;
   check('Fähigkeiten-Symbol öffnet „Fähigkeit wählen“ (4 Fähigkeiten)',
     win && plain(win.title).includes('Fähigkeit wählen') && [10, 12, 14, 16].every((i) => win.slots[i]),
@@ -595,7 +679,7 @@ async function main() {
   const arrows = (await cmd('execute as Anna at @s if entity @e[type=minecraft:arrow,distance=..30]')).join(' ');
   check('Pfeilhagel: fünf Pfeile', /count: 5/i.test(arrows), arrows);
   const info = (await cmd('duels info')).join(' ').replace(/§./g, '');
-  check('/duels info: 1 Arena belegt, 1 Kampf', /1\/8 belegt.*Kämpfe: 1/.test(info), info);
+  check('/duels info: 1 Arena belegt, 1 Kampf (16 Arenen: 8 Arten × 2)', /1\/16 belegt.*Kämpfe: 1/.test(info), info);
   bert2.chat('/verlassen');
   await waitFor(() => inHall(anna) && inHall(bert2), AFTER_MS + 6000);
 
@@ -626,6 +710,534 @@ async function main() {
   await sleep(800);
   check('Unentschieden in der Statistik (Modern)', sees(anna, /Siege 0 · Niederlagen 0 · Unentschieden 1/),
     anna.chats.join(' | '));
+
+  // ================================================================== Neue Kampfarten (0.2.0)
+  const fakeProps = path.join(SERVER, 'plugins/MoinMorni/fake.properties');
+  const originalProps = readFile(fakeProps);
+  /** Mittelpunkt der Arena aus dem Startplatz (rel = Startplatz relativ zur Mitte). */
+  const origin = (bot, rx, rz) => ({
+    x: Math.floor(bot.entity.position.x) - rx,
+    y: Math.floor(bot.entity.position.y) - 1,
+    z: Math.floor(bot.entity.position.z) - rz,
+  });
+  const armor = (bot) => [5, 6, 7, 8].map((i) => bot.inventory.slots[i]?.name ?? '-').join(',');
+  const fight = async (args, check1) => {
+    const ok = await duel(anna, carl, args);
+    check(`${args}: Kampf beginnt`, ok, `${JSON.stringify(anna.entity.position)}`);
+    if (check1) await check1();
+  };
+  const winByFight = async (label, swordSlot) => {
+    clear(anna, carl);
+    const down = await fightUntilDown(anna, carl, swordSlot);
+    check(`${label}: echt gekämpft bis zum Sieg`, down && (await waitFor(() => sees(anna, /Sieg für Anna/), 4000)),
+      anna.chats.slice(-3).join(' | '));
+    await allInHall(anna, carl);
+  };
+
+  // ---------- Nur Schwert
+  await fight('schwert', async () => {
+    check('Nur Schwert: nur ein Diamantschwert, keine Rüstung', slot(anna, 0)?.name === 'diamond_sword' &&
+      anna.inventory.slots.filter(Boolean).length === 1 && armor(anna) === '-,-,-,-',
+      `${anna.inventory.slots.filter(Boolean).map((i) => i.name).join(',')}`);
+  });
+  await winByFight('Nur Schwert', 0);
+
+  // ---------- Ritter (Eisen)
+  await fight('ritter', async () => {
+    check('Ritter: Eisenschwert, Eisenrüstung, Bogen, Goldäpfel', slot(anna, 0)?.name === 'iron_sword' &&
+      armor(anna) === 'iron_helmet,iron_chestplate,iron_leggings,iron_boots' && slot(anna, 1)?.name === 'bow' &&
+      slot(anna, 2)?.name === 'golden_apple', `${slot(anna, 0)?.name} ${armor(anna)}`);
+  });
+  await winByFight('Ritter', 0);
+
+  // ---------- Diamant
+  await fight('diamant', async () => {
+    check('Diamant: Diamantschwert und Diamantrüstung', slot(anna, 0)?.name === 'diamond_sword' &&
+      armor(anna) === 'diamond_helmet,diamond_chestplate,diamond_leggings,diamond_boots', armor(anna));
+  });
+  await winByFight('Diamant', 0);
+
+  // ---------- Bogen
+  await fight('bogen', async () => {
+    check('Bogen: Bogen, ein Pfeil (unendlich), Lederrüstung', slot(anna, 0)?.name === 'bow' &&
+      slot(anna, 8)?.name === 'arrow' && armor(anna).startsWith('leather_helmet'), `${slot(anna, 0)?.name} ${armor(anna)}`);
+  });
+  clear(anna, carl);
+  check('Bogen: mit Pfeilen bis zum Sieg', (await shootUntilDown(anna, carl, 0)) &&
+    (await waitFor(() => sees(anna, /Sieg für Anna/), 4000)), `${carl.health} ${anna.chats.slice(-2).join(' | ')}`);
+  check('Bogen: der Pfeil ist noch da (unendlich)', slot(anna, 8)?.name === 'arrow');
+  await allInHall(anna, carl);
+
+  // ---------- Angel
+  await fight('angel', async () => {
+    check('Angel: Eisenschwert und Angel', slot(anna, 0)?.name === 'iron_sword' && slot(anna, 1)?.name === 'fishing_rod',
+      `${slot(anna, 0)?.name} ${slot(anna, 1)?.name}`);
+  });
+  let pulled = false;
+  for (let i = 0; i < 4 && !pulled; i++) {
+    await cmd('execute at Carl run tp Anna ~ ~ ~-4 0 0');
+    await sleep(400);
+    anna.setQuickBarSlot(1);
+    const t = anna.players.Carl?.entity;
+    if (t) await anna.lookAt(t.position.offset(0, 1.0, 0), true);
+    carl.pushes.length = 0;
+    anna.activateItem();
+    await sleep(900);
+    anna.activateItem();
+    pulled = await waitFor(() => carl.pushes.some((v) => v.z < -0.15), 1500);
+  }
+  check('Angel: Einholen zieht den Gegner heran', pulled, JSON.stringify(carl.pushes.slice(-3)));
+  await winByFight('Angel', 0);
+
+  // ---------- Kombo
+  await fight('kombo', async () => {
+    check('Kombo: Diamant, Schärfe-Schwert, Goldäpfel', slot(anna, 0)?.name === 'diamond_sword' &&
+      slot(anna, 1)?.name === 'golden_apple' && armor(anna).startsWith('diamond_helmet'), armor(anna));
+  });
+  await winByFight('Kombo', 0);
+
+  // ---------- Axt und Schild
+  await fight('axt', async () => {
+    check('Axt und Schild: Diamantaxt und Schild', slot(anna, 0)?.name === 'diamond_axe' &&
+      anna.inventory.slots[45]?.name === 'shield', `${slot(anna, 0)?.name} ${anna.inventory.slots[45]?.name}`);
+  });
+  await winByFight('Axt und Schild', 0);
+
+  // ---------- Goldapfel
+  await fight('goldapfel', async () => {
+    check('Goldapfel: verzauberte Goldäpfel, Tränke, Diamantrüstung', slot(anna, 1)?.name === 'enchanted_golden_apple' &&
+      slot(anna, 2)?.name === 'potion' && slot(anna, 4)?.name === 'potion' && armor(anna).startsWith('diamond_helmet'),
+      [0, 1, 2, 4].map((i) => slot(anna, i)?.name).join(','));
+  });
+  await winByFight('Goldapfel', 0);
+
+  // ---------- Tränke
+  await fight('traenke', async () => {
+    const splash = anna.inventory.slots.filter((it) => it?.name === 'splash_potion').length;
+    check('Tränke: Inventar voller Wurf-Heiltränke, Perlen, Schnelligkeit', splash >= 30 &&
+      slot(anna, 1)?.name === 'ender_pearl' && slot(anna, 2)?.name === 'potion', `${splash} Wurftränke`);
+  });
+  await cmd('damage Anna 8 minecraft:out_of_world');
+  await waitFor(() => anna.health <= 12.5, 2000);
+  const hpPotion = anna.health;
+  anna.setQuickBarSlot(3);
+  await sleep(250);
+  await anna.look(anna.entity.yaw, -Math.PI / 2, true);
+  anna.activateItem();
+  check('Tränke: geworfener Heiltrank heilt', await waitFor(() => anna.health >= hpPotion + 4, 4000),
+    `${hpPotion} → ${anna.health}`);
+  await winByFight('Tränke', 0);
+
+  // ---------- Enderperlen
+  await fight('perlen', async () => {
+    check('Enderperlen: 16 Perlen', slot(anna, 1)?.name === 'ender_pearl' && slot(anna, 1)?.count === 16,
+      `${slot(anna, 1)?.name} ×${slot(anna, 1)?.count}`);
+  });
+  const pearlFrom = anna.entity.position.clone();
+  anna.setQuickBarSlot(1);
+  await sleep(250);
+  await anna.look(anna.entity.yaw, -0.35, true);
+  anna.activateItem();
+  check('Enderperlen: Perle bringt dich weiter', await waitFor(() => anna.entity.position.distanceTo(pearlFrom) > 3, 4000),
+    `${pearlFrom} → ${anna.entity.position}`);
+  await sleep(500);
+  check('Enderperlen: Landen tut nicht weh', anna.health >= 19.9, String(anna.health));
+  await winByFight('Enderperlen', 0);
+
+  // ---------- UHC
+  await fight('uhc', async () => {
+    check('UHC: Wasser, Lava, Goldäpfel, Bruchstein, Bogen; Überlebensmodus',
+      slot(anna, 2)?.name === 'water_bucket' && slot(anna, 3)?.name === 'lava_bucket' &&
+        slot(anna, 4)?.name === 'golden_apple' && slot(anna, 5)?.name === 'cobblestone' && slot(anna, 1)?.name === 'bow' &&
+        anna.game.gameMode === 'survival', `${[1, 2, 3, 4, 5].map((i) => slot(anna, i)?.name).join(',')} ${anna.game.gameMode}`);
+  });
+  const uo = origin(anna, 0, -16);
+  await cmd('damage Anna 4 minecraft:out_of_world');
+  await waitFor(() => anna.health <= 16.5, 2000);
+  const hpUhc = anna.health;
+  await sleep(4500);
+  check('UHC: keine natürliche Heilung', anna.health <= hpUhc + 0.01, `${hpUhc} → ${anna.health}`);
+  anna.setQuickBarSlot(4);
+  await sleep(250);
+  try {
+    await Promise.race([anna.consume(), sleep(4000)]);
+  } catch {
+    // weiter
+  }
+  check('UHC: Goldapfel heilt', await waitFor(() => anna.health > hpUhc + 1, 6000), `${hpUhc} → ${anna.health}`);
+  anna.setQuickBarSlot(5);
+  await sleep(250);
+  try {
+    await Promise.race([anna.placeBlock(anna.blockAt(new Vec3(uo.x + 2, uo.y, uo.z - 16)), new Vec3(0, 1, 0)), sleep(3000)]);
+  } catch {
+    // geprüft wird am Block
+  }
+  check('UHC: Block setzen erlaubt', await blockIs(uo.x + 2, uo.y + 1, uo.z - 16, 'minecraft:cobblestone'));
+  anna.setQuickBarSlot(7);
+  await digSoon(anna, anna.blockAt(new Vec3(uo.x + 2, uo.y + 1, uo.z - 16)));
+  check('UHC: eigenen Block wieder abbauen', await blockIs(uo.x + 2, uo.y + 1, uo.z - 16, 'minecraft:air'));
+  const floorName = anna.blockAt(new Vec3(uo.x - 1, uo.y, uo.z - 16))?.name;
+  await digSoon(anna, anna.blockAt(new Vec3(uo.x - 1, uo.y, uo.z - 16)));
+  check('UHC: Boden der Arena bleibt (nur eigene Blöcke abbauen)',
+    floorName && (await blockIs(uo.x - 1, uo.y, uo.z - 16, `minecraft:${floorName}`)), floorName);
+  anna.setQuickBarSlot(2);
+  await sleep(250);
+  await anna.lookAt(new Vec3(uo.x + 3.5, uo.y + 1, uo.z - 13.5), true);
+  anna.activateItem();
+  check('UHC: Wasser ausgießen', await waitFor(() => blockIs(uo.x + 3, uo.y + 1, uo.z - 14, 'minecraft:water'), 3000));
+  await sleep(1500);
+  check('UHC: Wasser fließt in der Arena', await blockIs(uo.x + 4, uo.y + 1, uo.z - 14, 'minecraft:water'));
+  clear(anna);
+  carl.chat('/verlassen');
+  await waitFor(() => sees(anna, /Sieg für Anna/), 4000);
+  await allInHall(anna, carl);
+  check('UHC: nach dem Kampf ist die Arena wie vorher (Wasser weg)',
+    (await blockIs(uo.x + 3, uo.y + 1, uo.z - 14, 'minecraft:air')) && (await blockIs(uo.x + 4, uo.y + 1, uo.z - 14, 'minecraft:air')));
+
+  // ---------- Bau-Kampf
+  await fight('baukampf', async () => {
+    check('Bau-Kampf: Bretter, Bruchstein, Spitzhacke; Überlebensmodus', slot(anna, 1)?.name === 'spruce_planks' &&
+      slot(anna, 3)?.name === 'cobblestone' && slot(anna, 4)?.name === 'diamond_pickaxe' && anna.game.gameMode === 'survival',
+      `${[1, 3, 4].map((i) => slot(anna, i)?.name).join(',')} ${anna.game.gameMode}`);
+  });
+  const bo = origin(anna, 0, -16);
+  anna.setQuickBarSlot(1);
+  await sleep(250);
+  try {
+    await Promise.race([anna.placeBlock(anna.blockAt(new Vec3(bo.x + 1, bo.y, bo.z - 15)), new Vec3(0, 1, 0)), sleep(3000)]);
+  } catch {
+    // geprüft wird am Block
+  }
+  check('Bau-Kampf: Bretter gesetzt', await blockIs(bo.x + 1, bo.y + 1, bo.z - 15, 'minecraft:spruce_planks'));
+  await winByFight('Bau-Kampf', 0);
+  check('Bau-Kampf: nach dem Kampf ist der Block wieder weg', await blockIs(bo.x + 1, bo.y + 1, bo.z - 15, 'minecraft:air'));
+
+  // ---------- Sumo (Warteschlange, gewertet)
+  clear(anna, carl);
+  anna.chat('/warteschlange sumo gewertet 1v1');
+  await sleep(400);
+  carl.chat('/warteschlange sumo gewertet 1v1');
+  check('Sumo: Warteschlange je Kampfart → Tanzboden', await waitFor(() => inArena(anna) && inArena(carl) &&
+    sees(anna, /Arena Tanzboden/), 8000), anna.chats.join(' | '));
+  check('Sumo: Hinweis zu Beginn', sees(anna, /Sumo: Stoß den Gegner vom Tanzboden/));
+  await started(anna);
+  check('Sumo: nichts in der Hand, Startplätze 6 Blöcke auseinander', anna.inventory.slots.filter(Boolean).length === 0 &&
+    Math.abs(anna.entity.position.distanceTo(carl.entity.position) - 6) < 1.2,
+    `${anna.entity.position.distanceTo(carl.entity.position).toFixed(1)}`);
+  anna.setQuickBarSlot(0);
+  carl.pushes.length = 0;
+  for (let i = 0; i < 4; i++) {
+    await cmd('execute at Carl run tp Anna ~ ~ ~-1.8 0 0');
+    await sleep(200);
+    const t = anna.players.Carl?.entity;
+    if (t) {
+      await anna.lookAt(t.position.offset(0, 1.4, 0), true);
+      anna.attack(t);
+    }
+    await sleep(600);
+  }
+  check('Sumo: Treffer stoßen weg, tun aber nicht weh', carl.health >= 19.9 && carl.pushes.length > 0,
+    `${carl.health} ❤, ${carl.pushes.length} Stöße`);
+  clear(anna, carl);
+  await cmd('execute at Carl run tp Carl ~ ~ ~9');
+  check('Sumo: Carl fällt vom Tanzboden → Sieg für Anna (gestoßen = Kill)',
+    await waitFor(() => sees(anna, /Carl wurde von Anna vom Tanzboden gestoßen/) && sees(anna, /Sieg für Anna/), 5000),
+    anna.chats.join(' | '));
+  check('Sumo: eigene Wertung je Kampfart (1016)', await waitFor(() => sees(anna, /Deine Wertung \(Sumo\): 1016 \+16/), 3000),
+    anna.chats.join(' | '));
+  await allInHall(anna, carl);
+  clear(anna);
+  anna.chat('/top sumo');
+  await sleep(800);
+  check('/top sumo: Anna 1016, Carl 984', sees(anna, /1\. Anna – 1016/) && sees(anna, /2\. Carl – 984/), anna.chats.join(' | '));
+  log = calls();
+  check('Netzwerk: elo_sumo, wins_sumo', log.some((c) => c.t === 'stats' && c.name === 'Anna' && c.best.elo_sumo === 1016 &&
+    c.add.wins_sumo === 1), JSON.stringify(log.filter((c) => c.t === 'stats' && c.name === 'Anna').slice(-1)));
+  clear(carl);
+  carl.chat('/stats');
+  await sleep(800);
+  check('Elo je Kampfart: Carl Sumo 984 (Platz 2), Klassisch unverändert 1000',
+    sees(carl, /Wertung: 984 \(Platz 2\)/) && sees(carl, /Wertung: 1000/), carl.chats.join(' | '));
+
+  // ---------- Boxen (Test: 10 Treffer)
+  await fight('boxen', async () => {
+    check('Boxen: Schwert, Schnelligkeit, Hinweis mit Treffern', slot(anna, 0)?.name === 'diamond_sword' &&
+      sees(anna, /Boxen: Wer zuerst 10 Treffer landet/), anna.chats.join(' | '));
+  });
+  clear(anna, carl);
+  anna.setQuickBarSlot(0);
+  for (let i = 0; i < 40 && !sees(anna, /Sieg für Anna/); i++) {
+    const v = carl.entity.position;
+    if (anna.entity.position.distanceTo(v) > 2.6) {
+      await cmd(`execute at Carl run tp Anna ~ ~ ~${anna.entity.position.z > v.z ? 1.8 : -1.8}`);
+      await sleep(200);
+    }
+    const t = anna.players.Carl?.entity;
+    if (t) {
+      await anna.lookAt(t.position.offset(0, 1.4, 0), true);
+      anna.attack(t);
+    }
+    await sleep(600);
+  }
+  check('Boxen: 10 Treffer = Sieg, Leben bleibt voll', sees(anna, /Sieg für Anna/) && carl.health >= 19.9,
+    `${carl.health} ❤ · ${anna.chats.slice(-2).join(' | ')}`);
+  check('Boxen: Treffer in der Aktionsleiste und am Ende', anna.bars.some((b) => /Treffer: \d+ : \d+/.test(b)) &&
+    sees(anna, /Treffer zum Schluss: 10:0/), `${anna.bars.slice(-1)[0]} · ${anna.chats.filter((c) => c.includes('Treffer')).join(' | ')}`);
+  await allInHall(anna, carl);
+  check('Netzwerk: hits_boxen = 10', calls().some((c) => c.t === 'stats' && c.name === 'Anna' && c.add.hits_boxen === 10));
+
+  // ---------- Spleef
+  await fight('spleef', async () => {
+    check('Spleef: Schneefeld, Diamantschaufel, Überlebensmodus', sees(anna, /Arena Schneefeld/) &&
+      slot(anna, 0)?.name === 'diamond_shovel' && anna.game.gameMode === 'survival', `${slot(anna, 0)?.name} ${anna.game.gameMode}`);
+  });
+  const so = origin(anna, 0, -7);
+  const under = new Vec3(Math.floor(carl.entity.position.x), so.y, Math.floor(carl.entity.position.z));
+  check('Spleef: Carl steht auf Schnee', await blockIs(under.x, under.y, under.z, 'minecraft:snow_block'));
+  const attackHp = carl.health;
+  await cmd('execute at Carl run tp Anna ~ ~ ~-2 0 30');
+  await sleep(400);
+  const t2 = anna.players.Carl?.entity;
+  if (t2) anna.attack(t2);
+  await sleep(500);
+  check('Spleef: Schlagen zählt nicht', carl.health >= attackHp && carl.health >= 19.9, String(carl.health));
+  clear(anna, carl);
+  anna.setQuickBarSlot(0);
+  await digSoon(anna, anna.blockAt(under));
+  check('Spleef: Schnee unter Carl weggeschaufelt → Carl bricht durch, Sieg für Anna',
+    await waitFor(() => sees(anna, /Carl ist durchs Schneefeld gebrochen/) && sees(anna, /Sieg für Anna/), 5000),
+    anna.chats.join(' | '));
+  await allInHall(anna, carl);
+  check('Spleef: Schneefeld danach wieder heil', await blockIs(under.x, under.y, under.z, 'minecraft:snow_block'));
+
+  // ---------- Labyrinth: Ziel in der Mitte, jede Runde ein neuer (gerechter) Irrgarten
+  await fight('labyrinth', async () => {
+    check('Labyrinth: Irrgarten, Start in entgegengesetzten Ecken', sees(anna, /Arena Irrgarten/) &&
+      anna.entity.position.distanceTo(carl.entity.position) > 40, anna.entity.position.distanceTo(carl.entity.position).toFixed(1));
+    check('Labyrinth: Schwert, Bogen, Kompass', slot(anna, 0)?.name === 'iron_sword' && slot(anna, 1)?.name === 'bow' &&
+      slot(anna, 2)?.name === 'compass', [0, 1, 2].map((i) => slot(anna, i)?.name).join(','));
+    check('Labyrinth: Hinweis aufs Ziel', sees(anna, /Wer zuerst das Ziel in der Mitte erreicht/), anna.chats.join(' | '));
+  });
+  const lo = origin(anna, -16, -16);
+  const MAZE_N = 11;
+  /** Welche Heckenstücke stehen gerade? Je inneres Stück eine Stelle: senkrecht (x-Linie), waagrecht (z-Linie). */
+  const hedges = () => {
+    let sig = '';
+    for (let i = 1; i < MAZE_N; i++) {
+      for (let j = 0; j < MAZE_N; j++) {
+        const line = -17 + 3 * i;
+        const along = -17 + 3 * j + 1;
+        for (const [x, z] of [[line, along], [along, line]]) {
+          const b = anna.blockAt(new Vec3(lo.x + x, lo.y + 2, lo.z + z));
+          sig += b && b.name.endsWith('leaves') ? '1' : '0';
+        }
+      }
+    }
+    return sig;
+  };
+  /** Kürzester Weg (in Zellen) von beiden Startecken zur Mitte – aus den Hecken, die im Spiel stehen. */
+  const mazeDistances = (sig) => {
+    const wall = (i, j, k) => sig[((i - 1) * MAZE_N + j) * 2 + k] === '1';
+    const open = (x, z, dx, dz) => {
+      if (dx === 1) return x + 1 < MAZE_N && !wall(x + 1, z, 0);
+      if (dx === -1) return x > 0 && !wall(x, z, 0);
+      if (dz === 1) return z + 1 < MAZE_N && !wall(z + 1, x, 1);
+      return z > 0 && !wall(z, x, 1);
+    };
+    const bfs = (sx, sz) => {
+      const dist = new Map([[`${sx},${sz}`, 0]]);
+      const queue = [[sx, sz]];
+      while (queue.length) {
+        const [x, z] = queue.shift();
+        for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const k = `${x + dx},${z + dz}`;
+          if (!dist.has(k) && open(x, z, dx, dz)) {
+            dist.set(k, dist.get(`${x},${z}`) + 1);
+            queue.push([x + dx, z + dz]);
+          }
+        }
+      }
+      return dist.get('5,5') ?? -1;
+    };
+    return [bfs(0, 0), bfs(MAZE_N - 1, MAZE_N - 1)];
+  };
+  const mazeA = hedges();
+  const distA = mazeDistances(mazeA);
+  check('Labyrinth: Hecken stehen, beide Ecken gleich weit vom Ziel', mazeA.includes('1') && mazeA.includes('0') &&
+    distA[0] > 0 && distA[0] === distA[1], `${distA.join(' / ')} Zellen`);
+  check('Labyrinth: Ziel in der Mitte mit Leuchtfeuer und Goldrand',
+    (await blockIs(lo.x - 1, lo.y, lo.z - 1, 'minecraft:beacon')) && (await blockIs(lo.x + 1, lo.y, lo.z + 1, 'minecraft:gold_block')) &&
+      (await blockIs(lo.x, lo.y, lo.z, 'minecraft:emerald_block')));
+  clear(anna, carl);
+  // Anna steht kurz vor dem Ziel auf dem Platz in der Mitte und läuft hinein.
+  await cmd(`execute in minecraft:duels run tp Anna ${lo.x - 1 + 0.5} ${lo.y + 1} ${lo.z - 4 + 0.5} 0 0`);
+  await sleep(600);
+  check('Labyrinth: kurz vor dem Ziel zählt noch nichts', !sees(anna, /Ziel!/), anna.chats.join(' | '));
+  if (NO_MOVE) {
+    await cmd(`execute in minecraft:duels run tp Anna ${lo.x - 1 + 0.5} ${lo.y + 1} ${lo.z - 1 + 0.5}`);
+  } else {
+    await anna.lookAt(new Vec3(lo.x - 0.5, lo.y + 1.6, lo.z + 0.5), true);
+    anna.setControlState('forward', true);
+    await waitFor(() => sees(anna, /Ziel!/), 5000);
+    anna.setControlState('forward', false);
+  }
+  check('Labyrinth: Anna läuft aufs Ziel → Ziel! und Sieg für Anna',
+    await waitFor(() => sees(anna, /Ziel! Anna hat als Erstes die Mitte des Irrgartens erreicht/) && sees(anna, /Sieg für Anna/), 5000),
+    anna.chats.join(' | '));
+  check('Labyrinth: Carl liest „Zu spät!“', await waitFor(() => sawTitle(carl, /Zu spät/), 2000), carl.titles.join(' | '));
+  await allInHall(anna, carl);
+  check('Netzwerk: goals_labyrinth = 1, wins_labyrinth', calls().some((c) => c.t === 'stats' && c.name === 'Anna' &&
+    c.add.goals_labyrinth === 1 && c.add.wins_labyrinth === 1));
+  // Zweiter Kampf: ein anderer Irrgarten, wieder gerecht – diesmal wird gekämpft.
+  await fight('labyrinth');
+  const mazeB = hedges();
+  const distB = mazeDistances(mazeB);
+  check('Labyrinth: neuer Kampf → neuer Irrgarten, wieder gleich weit', mazeB !== mazeA && distB[0] > 0 && distB[0] === distB[1],
+    `${distB.join(' / ')} Zellen, ${[...mazeA].filter((c, i) => c !== mazeB[i]).length} Stücke anders`);
+  await cmd(`execute in minecraft:duels run tp Anna ${lo.x + 3 + 0.5} ${lo.y + 1} ${lo.z - 4 + 0.5}`,
+    `execute in minecraft:duels run tp Carl ${lo.x + 3 + 0.5} ${lo.y + 1} ${lo.z + 2 + 0.5}`);
+  await sleep(500);
+  await winByFight('Labyrinth', 0);
+
+  // ---------- Brücke (Test: 2 Tore)
+  await fight('bruecke', async () => {
+    check('Brücke: Klammbrücke, Blöcke in Teamfarbe (Blau/Rot)', sees(anna, /Arena Klammbrücke/) &&
+      slot(anna, 3)?.name === 'blue_concrete' && slot(carl, 3)?.name === 'red_concrete' && anna.game.gameMode === 'survival',
+      `${slot(anna, 3)?.name} ${slot(carl, 3)?.name}`);
+  });
+  const ro = origin(anna, 0, -19);
+  anna.setQuickBarSlot(3);
+  await sleep(250);
+  try {
+    await Promise.race([anna.placeBlock(anna.blockAt(new Vec3(ro.x + 2, ro.y, ro.z - 19)), new Vec3(0, 1, 0)), sleep(3000)]);
+  } catch {
+    // geprüft wird am Block
+  }
+  check('Brücke: Block in Teamfarbe setzen', await blockIs(ro.x + 2, ro.y + 1, ro.z - 19, 'minecraft:blue_concrete'));
+  clear(anna, carl);
+  await cmd('execute at Carl run tp Carl ~11 ~ ~');
+  check('Brücke: Carl stürzt in die Klamm → kommt am Start wieder (scheidet nicht aus)',
+    await waitFor(() => sees(anna, /Carl ist in die Klamm gestürzt/), 5000) &&
+      (await waitFor(() => Math.abs(carl.entity.position.z - (ro.z + 19.5)) < 2 && carl.game.gameMode === 'survival', 4000)),
+    `${anna.chats.join(' | ')} · ${JSON.stringify(carl.entity.position)} ${carl.game.gameMode}`);
+  clear(anna, carl);
+  await cmd(`execute in minecraft:duels run tp Anna ${ro.x + 0.5} ${ro.y + 3} ${ro.z + 26.5}`);
+  check('Brücke: Anna springt ins rote Tor → Tor! 1:0', await waitFor(() => sees(anna, /Tor! Anna punktet für Blau – Stand 1:0/), 5000),
+    anna.chats.join(' | '));
+  check('Brücke: nach dem Tor alle zurück am Start', await waitFor(() => Math.abs(anna.entity.position.z - (ro.z - 18.5)) < 2, 4000),
+    JSON.stringify(anna.entity.position));
+  await started(anna);
+  clear(anna, carl);
+  await cmd(`execute in minecraft:duels run tp Carl ${ro.x + 0.5} ${ro.y + 3} ${ro.z + 26.5}`);
+  check('Brücke: ins eigene Tor = zurück an den Start, kein Punkt', await waitFor(() => sees(anna, /Carl ist ins eigene Tor gesprungen/), 5000) &&
+    !sees(anna, /Stand 1:1/), anna.chats.join(' | '));
+  await sleep(1600);
+  anna.titles.length = 0;
+  await cmd(`execute in minecraft:duels run tp Anna ${ro.x + 0.5} ${ro.y + 3} ${ro.z + 26.5}`);
+  check('Brücke: zweites Tor → Sieg für Anna (2 Tore)', await waitFor(() => sees(anna, /Stand 2:0/) && sees(anna, /Sieg für Anna/), 6000),
+    anna.chats.join(' | '));
+  check('Brücke: Endstand der Tore', sees(anna, /Tore zum Schluss: 2:0/));
+  await allInHall(anna, carl);
+  check('Brücke: gesetzter Block danach wieder weg', await blockIs(ro.x + 2, ro.y + 1, ro.z - 19, 'minecraft:air'));
+  check('Netzwerk: goals_bruecke = 2', calls().some((c) => c.t === 'stats' && c.name === 'Anna' && c.add.goals_bruecke === 2));
+
+  // ---------- /duel mit Arena und „Bester aus 3“
+  clear(anna, carl);
+  anna.chat('/duel Carl klassisch burghof 3');
+  check('Herausforderung mit Arena und Runden', await waitFor(() => sees(carl, /Klassisch · Bester aus 3 · Burghof/), 4000),
+    carl.chats.join(' | '));
+  carl.chat('/duel annehmen');
+  await waitFor(() => inArena(anna) && inArena(carl), 8000);
+  check('Bester aus 3: Arena Burghof, Hinweis', sees(anna, /Arena Burghof/) && sees(anna, /Bester aus 3: wer zuerst 2 Runden gewinnt/),
+    anna.chats.join(' | '));
+  await started(anna);
+  clear(anna, carl);
+  check('Runde 1 an Anna', (await fightUntilDown(anna, carl, 0)) &&
+    (await waitFor(() => sees(anna, /Runde 1 an Anna – Stand 1:0/), 4000)), anna.chats.join(' | '));
+  check('Keine Siegerehrung nach Runde 1', !sees(anna, /Sieg für/));
+  check('Runde 2: Carl ist wieder dabei', await waitFor(() => carl.game.gameMode === 'adventure' && inArena(carl) &&
+    anna.titles.includes('1'), 9000), `${carl.game.gameMode} ${JSON.stringify(carl.entity.position)}`);
+  await started(anna);
+  clear(anna, carl);
+  check('Runde 2 an Anna → Sieg 2:0', (await fightUntilDown(anna, carl, 0)) &&
+    (await waitFor(() => sees(anna, /Sieg für Anna/) && sees(anna, /Endstand nach Runden: 2:0/), 5000)), anna.chats.join(' | '));
+  await allInHall(anna, carl);
+  check('Netzwerk: rounds_won = 2', calls().some((c) => c.t === 'stats' && c.name === 'Anna' && c.add.rounds_won === 2));
+
+  // ---------- Kampfart ausgeschaltet (config.yml + /duels neuladen)
+  const configFile = path.join(SERVER, 'plugins/MoinMorniDuels/config.yml');
+  const configBefore = readFile(configFile);
+  fs.writeFileSync(configFile, `${configBefore}\nkits:\n  kombo:\n    an: false\n`);
+  await cmd('duels neuladen');
+  clear(anna);
+  anna.chat('/duel Carl kombo');
+  check('Ausgeschaltete Kampfart: nicht herausfordern', await waitFor(() => sees(anna, /gerade ausgeschaltet/), 3000),
+    anna.chats.join(' | '));
+  fs.writeFileSync(configFile, configBefore);
+  await cmd('duels neuladen');
+
+  // ---------- Party gegen Party
+  parties('party.Anna=Anna,Bert', 'party.Carl=Carl,Dora');
+  clear(anna, bert2, carl, dora);
+  anna.chat('/duel Carl ritter');
+  check('Party gegen Party: beide leiten eine Party', await waitFor(() => sees(carl, /Ritter · Party gegen Party/), 4000),
+    carl.chats.join(' | '));
+  carl.chat('/duel annehmen');
+  check('Party gegen Party: alle vier in der Arena', await waitFor(() => [anna, bert2, carl, dora].every(inArena), 8000));
+  check('Party gegen Party: Anna & Bert gegen Carl & Dora',
+    side(anna) === side(bert2) && side(carl) === side(dora) && side(anna) !== side(carl),
+    [anna, bert2, carl, dora].map((b) => `${b.username}:${side(b)}`).join(' '));
+  await started(anna);
+  clear(anna, bert2, carl, dora);
+  carl.chat('/verlassen');
+  dora.chat('/verlassen');
+  check('Party gegen Party: Sieg für Anna & Bert', await waitFor(() => sees(anna, /Sieg für Anna & Bert/), 5000), anna.chats.join(' | '));
+  await allInHall(anna, bert2, carl, dora);
+  check('Netzwerk: party_games/party_wins', calls().some((c) => c.t === 'stats' && c.name === 'Bert' && c.add.party_games === 1 &&
+    c.add.party_wins === 1));
+
+  // ---------- Party: Jeder gegen jeden
+  parties('party.Anna=Anna,Bert,Dora');
+  clear(anna, bert2, dora);
+  bert2.chat('/partykampf schwert');
+  check('Jeder gegen jeden: nur die Party-Leitung startet', await waitFor(() => sees(bert2, /Your party leader starts that/), 3000),
+    bert2.chats.join(' | '));
+  anna.chat('/partykampf schwert');
+  check('Jeder gegen jeden: alle drei in der Arena', await waitFor(() => [anna, bert2, dora].every(inArena), 8000) &&
+    sees(anna, /Party-Kampf „Jeder gegen jeden“: Nur Schwert mit Anna, Bert, Dora/), anna.chats.join(' | '));
+  const spread = [anna.entity.position.distanceTo(bert2.entity.position), anna.entity.position.distanceTo(dora.entity.position),
+    bert2.entity.position.distanceTo(dora.entity.position)];
+  check('Jeder gegen jeden: verschiedene Startplätze im Kreis', spread.every((d) => d > 5), spread.map((d) => d.toFixed(1)).join(','));
+  await started(anna);
+  clear(anna, bert2, dora);
+  bert2.chat('/verlassen');
+  await sleep(600);
+  check('Jeder gegen jeden: nach Berts Aufgabe läuft es weiter', !sees(anna, /Sieg für/));
+  dora.chat('/verlassen');
+  check('Jeder gegen jeden: Sieg für Anna', await waitFor(() => sees(anna, /Sieg für Anna/), 5000), anna.chats.join(' | '));
+  await allInHall(anna, bert2, dora);
+
+  // ---------- Party: zwei Teams (zufällig geteilt – geht auch mit der Brücke)
+  parties('party.Anna=Anna,Bert,Carl,Dora');
+  clear(anna, bert2, carl, dora);
+  anna.chat('/partykampf bruecke teams');
+  check('Zwei Teams: alle vier in der Arena', await waitFor(() => [anna, bert2, carl, dora].every(inArena), 8000) &&
+    sees(anna, /Party-Kampf in zwei Teams: Brücke – \S+ & \S+ gegen \S+ & \S+/), anna.chats.join(' | '));
+  const sides = [anna, bert2, carl, dora].map(side);
+  check('Zwei Teams: 2 gegen 2 auf beiden Seiten', sides.filter((x) => x === sides[0]).length === 2, sides.join(','));
+  check('Zwei Teams: Blöcke in Teamfarbe', [anna, bert2, carl, dora].every((b) => /blue_concrete|red_concrete/.test(slot(b, 3)?.name ?? '')),
+    [anna, bert2, carl, dora].map((b) => slot(b, 3)?.name).join(','));
+  await started(anna);
+  clear(anna, bert2, carl, dora);
+  const others = [bert2, carl, dora].filter((b) => side(b) !== side(anna));
+  for (const b of others) b.chat('/verlassen');
+  const mates = [anna, bert2, carl, dora].filter((b) => side(b) === side(anna)).map((b) => b.username);
+  check('Zwei Teams: Sieg für Annas Team', await waitFor(() => sees(anna, new RegExp(`Sieg für (${mates.join(' & ')}|${[...mates].reverse().join(' & ')})`)), 5000),
+    anna.chats.join(' | '));
+  await allInHall(anna, bert2, carl, dora);
+  check('Netzwerk: Zwei Teams zählt als Party-Kampf', calls().some((c) => c.t === 'stats' && c.name === 'Anna' &&
+    c.add.party_wins === 1 && c.add.wins_bruecke === 1));
+  fs.writeFileSync(fakeProps, originalProps);
 
   // ------------------------------------------------------------------ Zur Lobby
   dora.setQuickBarSlot(8);
@@ -661,7 +1273,7 @@ setTimeout(() => {
   console.log('Zeit abgelaufen');
   console.log(`${results.filter((r) => r.ok).length}/${results.length} bis hierhin bestanden`);
   process.exit(2);
-}, 600_000);
+}, 1_800_000);
 
 main().catch((e) => {
   console.error(e);

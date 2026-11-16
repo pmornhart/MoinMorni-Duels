@@ -3,8 +3,9 @@ package de.moinmorni.duels.world;
 import java.util.Random;
 
 /**
- * Baupläne der Arenen. Spielfläche je 49 × 49 Blöcke ({@code -HALF … HALF}), Startpunkte bei z = ∓16, rundherum
- * eine unsichtbare Wand. Jede Arena schwebt auf ihrer eigenen Insel.
+ * Baupläne der Arenen. Die vier normalen: Spielfläche je 49 × 49 Blöcke ({@code -HALF … HALF}), Startpunkte bei
+ * z = ∓16, rundherum eine unsichtbare Wand. Jede Arena schwebt auf ihrer eigenen Insel. Die Arenen der besonderen
+ * Kampfarten stehen in {@link SpecialArenas}.
  */
 public final class ArenaPlans {
 
@@ -26,10 +27,28 @@ public final class ArenaPlans {
             case BURGHOF -> burghof(p, r);
             case BERGWERK -> bergwerk(p, r);
             case WIRTSHAUSGARTEN -> wirtshausgarten(p, r);
+            case TANZBODEN -> SpecialArenas.tanzboden(p, r);
+            case SCHNEEFELD -> SpecialArenas.schneefeld(p, r);
+            case IRRGARTEN -> SpecialArenas.irrgarten(p, r);
+            case KLAMMBRUECKE -> SpecialArenas.klammbruecke(p, r);
         }
-        Decor.barrierBox(p, HALF, TOP, type != ArenaType.BERGWERK);
+        if (type.normal()) {
+            Decor.barrierBox(p, HALF, TOP, type != ArenaType.BERGWERK);
+        }
         p.connect();
         return p;
+    }
+
+    /** Startplätze, Zuschauerplatz und Grenzen einer Arena-Art. */
+    public static ArenaShape shape(ArenaType type) {
+        return switch (type) {
+            case TANZBODEN -> SpecialArenas.tanzbodenShape();
+            case SCHNEEFELD -> SpecialArenas.schneefeldShape();
+            case IRRGARTEN -> SpecialArenas.irrgartenShape();
+            case KLAMMBRUECKE -> SpecialArenas.klammbrueckeShape();
+            default -> new ArenaShape(ArenaShape.rows(SPAWN_Z, 4, 4, 3, 14),
+                    new double[] {0.5, 9, SPAWN_Z + 6.5, 180, 30}, HALF + 1, HALF + 1, TOP + 4, -12, 11);
+        };
     }
 
     /** Liegt (x, z) bei einem Startpunkt? Dort bleibt der Boden frei und eben. */

@@ -30,6 +30,11 @@ final class Decor {
      * Blöcke Erde, darunter Fels, nach unten spitz zulaufend.
      */
     static void island(Plan p, int radius, int depth, Random r, String soil, int soilDepth) {
+        islandAt(p, radius, depth, r, soil, soilDepth, -1);
+    }
+
+    /** Wie {@link #island}, aber die Oberkante liegt bei {@code topY} (statt direkt unter dem Boden). */
+    static void islandAt(Plan p, int radius, int depth, Random r, String soil, int soilDepth, int topY) {
         int edge = radius + 2;
         for (int x = -edge; x <= edge; x++) {
             for (int z = -edge; z <= edge; z++) {
@@ -40,7 +45,7 @@ final class Decor {
                 double f = Math.max(0, 1 - (rr / (edge + 1)) * (rr / (edge + 1)));
                 int col = 2 + (int) Math.round(depth * Math.sqrt(f)) + r.nextInt(2);
                 for (int d = 1; d <= col; d++) {
-                    p.setIfEmpty(x, -d, z, d <= soilDepth && soil != null ? soil : rock(r, d));
+                    p.setIfEmpty(x, topY + 1 - d, z, d <= soilDepth && soil != null ? soil : rock(r, d));
                 }
             }
         }

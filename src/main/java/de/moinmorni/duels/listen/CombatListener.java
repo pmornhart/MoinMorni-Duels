@@ -14,8 +14,10 @@ import java.util.UUID;
 import org.bukkit.Material;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
+import org.bukkit.damage.DamageType;
 import org.bukkit.entity.AreaEffectCloud;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.FishHook;
 import org.bukkit.entity.Item;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
@@ -30,7 +32,9 @@ import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.EntityRegainHealthEvent;
 import org.bukkit.event.entity.FoodLevelChangeEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.entity.ProjectileLaunchEvent;
+import org.bukkit.event.player.PlayerFishEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerPickupArrowEvent;
 import org.bukkit.inventory.EquipmentSlot;
@@ -39,7 +43,9 @@ import org.bukkit.util.Vector;
 
 /**
  * Kampf: Schaden nur im laufenden Kampf und nur zwischen Gegnern, kein echter Tod (wer fallen würde, scheidet aus und
- * schaut zu), Suppe, Fähigkeiten, Rückstoß wie früher im Kit „Klassisch“, Hunger.
+ * schaut zu – bei der Brücke kommt man wieder), Suppe, Fähigkeiten, Rückstoß wie früher in den klassischen
+ * Kampfarten, Hunger. Dazu die besonderen Regeln: Sumo und Boxen ohne Schaden (Boxen zählt Treffer), Spleef ohne
+ * Treffer, UHC ohne natürliche Heilung, Enderperlen ohne Landeschaden, die Angel holt Gegner heran.
  */
 public final class CombatListener implements Listener {
 
@@ -48,6 +54,11 @@ public final class CombatListener implements Listener {
     private static final double SPRINT_LIFT = 0.1;
     private static final long BOWL_TICKS = 40L;
     private static final int NO_PICKUP = 32767;
+    /** Der Angelhaken stupst wie früher: winziger Treffer, normaler Rückstoß. */
+    private static final double ROD_TAP = 0.01;
+    private static final double ROD_PULL = 0.12;
+    private static final double ROD_LIFT = 0.25;
+    private static final double ROD_LIFT_MAX = 0.6;
 
     private final DuelsPlugin plugin;
 
@@ -67,6 +78,12 @@ public final class CombatListener implements Listener {
             return;
         }
         Fight f = of.get();
+        Kit kit = f.kit();
+        if (!kit.hitsPush()) {
+            // Spleef: Treffer zählen nicht – nur die Schaufel
+            e.setCancelled(true);
+            return;
+        }
         Player attacker = attacker(e);
         long now = System.currentTimeMillis();
         if (attacker != null && attacker != victim) {
@@ -80,8 +97,23 @@ public final class CombatListener implements Listener {
                     && Loadouts.ABILITY.equals(Items.kitTag(attacker.getInventory().getItemInMainHand()))) {
                 e.setDamage(ABILITY_ITEM_HIT);
             }
+            if (!kit.hitsHurt()) {
+                if (e.getCause() != EntityDamageEvent.DamageCause.ENTITY_ATTACK) {
+                    e.setCancelled(true);
+                    return;
+                }
+                // Sumo und Boxen: der Treffer stößt, tut aber nicht weh
+                e.setDamage(0);
+                if (kit == Kit.BOXEN) {
+                    plugin.fights().boxHit(f, attacker);
+                }
+                return;
+            }
+        } else if (!kit.hitsHurt()) {
+            e.setCancelled(true);
+            return;
         }
-        if (f.kit() == Kit.KLASSISCH && e.getCause() == EntityDamageEvent.DamageCause.ENTITY_SWEEP_ATTACK) {
+        if (kit.classicCombat() && e.getCause() == EntityDamageEvent.DamageCause.ENTITY_SWEEP_ATTACK) {
             e.setCancelled(true);
             return;
         }
@@ -89,10 +121,14 @@ public final class CombatListener implements Listener {
             e.setCancelled(true);
             return;
         }
+        if (kit == Kit.PERLEN && e.getDamageSource().getDamageType() == DamageType.ENDER_PEARL) {
+            e.setCancelled(true);
+            return;
+        }
         if (e.getFinalDamage() >= victim.getHealth()) {
             e.setCancelled(true);
             UUID killer = attacker != null && attacker != victim ? attacker.getUniqueId() : f.recentDamager(v, now);
-            plugin.fights().eliminate(f, victim, killer, attacker != null ? Fight.Cause.KILLED : Fight.Cause.DIED);
+            plugin.fights().down(f, victim, killer, attacker != null ? Fight.Cause.KILLED : Fight.Cause.DIED);
         }
     }
 
@@ -114,14 +150,14 @@ public final class CombatListener implements Listener {
         return null;
     }
 
-    /** Klassisch: Rückstoß hebt auch in der Luft an – wie früher (sonst nur am Boden). */
+    /** Klassische Kampfarten: Rückstoß hebt auch in der Luft an – wie früher (sonst nur am Boden). */
     @EventHandler(ignoreCancelled = true)
     public void onKnockback(EntityKnockbackByEntityEvent e) {
         if (!(e.getEntity() instanceof Player victim) || !(e.getHitBy() instanceof Player)) {
             return;
         }
         Optional<Fight> f = plugin.fights().of(victim.getUniqueId());
-        if (f.isEmpty() || f.get().kit() != Kit.KLASSISCH) {
+        if (f.isEmpty() || !f.get().kit().classicCombat()) {
             return;
         }
         Vector add = e.getKnockback();
@@ -192,12 +228,69 @@ public final class CombatListener implements Listener {
         Ui.sound(p, "entity.generic.drink", 1.3f);
     }
 
-    /** Angehalten (jemand fehlt): auch das Leben bleibt, wie es ist – niemand heilt sich in der Pause. */
+    /**
+     * Heilung: Angehalten (jemand fehlt) bleibt das Leben, wie es ist – niemand heilt sich in der Pause. UHC: keine
+     * natürliche Heilung, nur Goldäpfel (und Tränke) heilen.
+     */
     @EventHandler(ignoreCancelled = true)
     public void onRegain(EntityRegainHealthEvent e) {
-        if (e.getEntity() instanceof Player p && plugin.fights().of(p.getUniqueId()).filter(Fight::paused).isPresent()) {
+        if (!(e.getEntity() instanceof Player p)) {
+            return;
+        }
+        Optional<Fight> f = plugin.fights().of(p.getUniqueId());
+        if (f.isEmpty()) {
+            return;
+        }
+        EntityRegainHealthEvent.RegainReason reason = e.getRegainReason();
+        if (f.get().paused() || !f.get().kit().naturalRegen() && (reason == EntityRegainHealthEvent.RegainReason.SATIATED
+                || reason == EntityRegainHealthEvent.RegainReason.REGEN)) {
             e.setCancelled(true);
         }
+    }
+
+    /** Angel: Wer am Haken hängt, wird beim Einholen zum Angler gezogen. */
+    @EventHandler(ignoreCancelled = true)
+    public void onFish(PlayerFishEvent e) {
+        Player p = e.getPlayer();
+        if (e.getState() != PlayerFishEvent.State.CAUGHT_ENTITY || !(e.getCaught() instanceof Player t)) {
+            return;
+        }
+        Optional<Fight> of = plugin.fights().of(p.getUniqueId());
+        if (of.isEmpty() || !opponents(of.get(), p, t)) {
+            return;
+        }
+        double strength = plugin.kitSettings().rodPull();
+        if (strength <= 0) {
+            return;
+        }
+        Vector pull = p.getLocation().toVector().subtract(t.getLocation().toVector()).multiply(ROD_PULL * strength);
+        pull.setY(Math.min(ROD_LIFT_MAX, Math.max(ROD_LIFT, pull.getY() + ROD_LIFT)));
+        t.setVelocity(pull);
+        of.get().hit(t.getUniqueId(), p.getUniqueId(), System.currentTimeMillis());
+    }
+
+    /** Angel: Der Haken trifft einen Gegner – ein kleiner Stups wie früher (winziger Treffer mit Rückstoß). */
+    @EventHandler(ignoreCancelled = true)
+    public void onHook(ProjectileHitEvent e) {
+        if (!(e.getEntity() instanceof FishHook hook) || !(hook.getShooter() instanceof Player p)
+                || !(e.getHitEntity() instanceof Player t)) {
+            return;
+        }
+        Optional<Fight> of = plugin.fights().of(p.getUniqueId());
+        if (of.isEmpty() || !opponents(of.get(), p, t) || !of.get().kit().hitsHurt()) {
+            return;
+        }
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            if (t.isOnline() && p.isOnline()) {
+                t.damage(ROD_TAP, p);
+            }
+        });
+    }
+
+    /** Beide leben im selben laufenden Kampf und sind Gegner? */
+    private static boolean opponents(Fight f, Player a, Player b) {
+        return f.live() && f.isAlive(a.getUniqueId()) && f.isAlive(b.getUniqueId())
+                && f.team(b.getUniqueId()) >= 0 && !f.sameTeam(a.getUniqueId(), b.getUniqueId());
     }
 
     @EventHandler(ignoreCancelled = true)

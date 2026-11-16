@@ -3,27 +3,61 @@
 **Was es ist:** Der Duell-Modus des MoinMorni-Netzwerks (Paper-Plugin `MoinMorniDuels`, Java 25, Paper 26.x).
 Entscheidungen von Philip (14.11.2026): Klassisch (Suppe, ohne Abklingzeit) / Modern / Fähigkeiten + Kit-Editor,
 gewertet + locker, 1 gegen 1 und 2 gegen 2, `/duel`, Ranglisten; Spielgefühl wie früher auf klassischen
-PvP-Servern – nur Mechanik, eigene Namen und eigene Optik.
+PvP-Servern – nur Mechanik, eigene Namen und eigene Optik. Seit 0.2.0 (16.11.): 20 Kampfarten in drei Gruppen
+(Klassisch, Modern, Spaß), vier eigene Arenen (Tanzboden, Schneefeld, Irrgarten, Klammbrücke), „Bester aus 1/3/5“,
+Party gegen Party und Jeder gegen jeden.
 
 ## Aufbau
 
-- `src/main/java/de/moinmorni/duels/`: `DuelsPlugin` (Start, Welt, Aufgaben), `Settings` (config.yml), `Texts` (de/en),
-  `Ui`, `Items`, `Commands`, `Challenges` (/duel).
+- `src/main/java/de/moinmorni/duels/`: `DuelsPlugin` (Start, Welt, Aufgaben), `Settings` (config.yml), `KitSettings`
+  (Kampfarten an/aus, Runden, Regeln von Sumo/Boxen/Brücke/Kombo/Angel/Labyrinth/Party), `Texts` (de/en), `Ui`,
+  `Items`, `Commands`, `Challenges` (/duel mit Kampfart, Arena, Runden; Party gegen Party), `PartyFights`
+  (/partykampf: Jeder gegen jeden oder Zwei Teams).
 - `net/`: `Network` (Schnittstelle), `Connected` (über `de.moinmorni.api.MoinMorni`), `Standalone` (ohne Netzwerk).
-- `kit/`: `Kit`, `Ability`, `Layout` (eigene Anordnung, rein), `Loadouts` (Ausrüstungen).
+- `kit/`: `Kit` (20 Kampfarten, Gruppen, Regeln je Kampfart), `Ability`, `Layout` (eigene Anordnung, rein),
+  `Loadouts` (Ausrüstungen; Verzauberungen und Effekte als Namen, erst auf dem Server aufgelöst).
 - `match/`: `Elo`, `Matchmaker` (rein, mit Tests), `QueueKey`, `Queues` (Warteschlangen, Party).
-- `fight/`: `Fight`, `Fights` (Start, Countdown, Ausscheiden, Ende, Wertung, Statistik), `Abilities`.
+- `fight/`: `Fight` (Teams, Art: Warteschlange/Herausforderung/Party/Jeder gegen jeden, Runden, Pause), `Fights`
+  (Start, Countdown, Runden, Ausscheiden, Tore, Treffer, Ende, Wertung, Statistik), `Tally` (Runden, Treffer, Tore –
+  rein), `Zones` (Tore, Ziel im Irrgarten, Bauzonen, Sumo-Tiefe – rein), `Building` (was im Kampf gebaut und abgebaut werden darf),
+  `Abilities`, `PlayerState`.
 - `data/`: `KitStats`, `PlayerData` (YAML), `Store` (speichert im Hintergrund), `Leaderboard`, `DataMove` (holt den
   Datenordner aus 0.1.1 zurück).
-- `world/`: `VoidGenerator`, `Plan` (Bauplan), `Decor`, `HallPlan` (Turnierhof), `ArenaPlans` (4 Arenen), `Arena`,
-  `Arenas`, `Construction` (baut nur bei neuer Bau-Version, Halle sofort, Arenen nach und nach), `BlockLog`.
-- `hall/`: `Hall` (Knöpfe, Zustand), `HallBoards` (Schrift je Sprache). `menu/`: `Menu`, `Menus`, `KitEditor`.
-- `listen/`: `PlayerListener`, `CombatListener`, `GuardListener`.
+- `world/`: `VoidGenerator`, `Plan` (Bauplan), `Decor`, `HallPlan` (Turnierhof), `ArenaType` (8 Arenen),
+  `ArenaPlans` (4 Arenen für alle), `SpecialArenas` (Tanzboden, Schneefeld, Irrgarten, Klammbrücke), `ArenaShape`
+  (Startplätze, Blick, Grenzen – rein), `Maze` (punktsymmetrischer Irrgarten – rein), `Arena`, `Arenas`, `Construction` (baut nur bei
+  neuer Bau-Version, Halle sofort, Arenen nach und nach), `BlockLog`.
+- `hall/`: `Hall` (Knöpfe, Zustand), `HallBoards` (Schrift je Sprache, wechselt zwischen den Gruppen). `menu/`:
+  `Menu`, `Menus` (Kampfmenü nach Gruppen, Kampfart-Menü, Herausforderung mit Arena und Runden), `KitEditor`.
+- `listen/`: `PlayerListener`, `CombatListener` (Regeln je Kampfart), `GuardListener` (Bauen, Wasser/Lava im UHC).
 - `src/api/java/de/moinmorni/api/MoinMorni.java`: Kopie der Netzwerk-Schnittstelle (nicht in der Jar).
 - `test/`: `run.sh` (echter Server), `duels-test.cjs` (mineflayer), `rcon.cjs`, `fake-network/` (Test-Netzwerk).
 
 ## Stand (16.11.2026)
 
+- Version 0.2.0 (Branch `claude/mehr-kits`, baut auf 0.1.3 auf, wartet auf Philips Go): **Viel mehr Kampfarten**.
+  20 Kampfarten in drei Gruppen – Klassisch (keine Abklingzeit): Klassisch, Nur Schwert, Ritter, Diamant, Bogen,
+  Angel, Kombo; Modern: Modern, Axt und Schild, Goldapfel, Tränke, Enderperlen, UHC, Bau-Kampf; Spaß: Fähigkeiten,
+  Sumo, Boxen, Spleef, Labyrinth, Brücke. Jede mit eigenem Bild, Warteschlangen (locker/gewertet, 1v1/2v2), Elo,
+  Rangliste und Statistik. Vier eigene Arenen (`SpecialArenas`, Bau-Version 2): Tanzboden (Sumo), Schneefeld (Spleef),
+  Irrgarten (Labyrinth, eigener Heckenplan aus `Maze`), Klammbrücke (Brücke mit Toren). Regeln: Sumo ohne Schaden,
+  Herunterfallen = raus (Kill für den letzten Stoß); Boxen zählt Treffer bis `boxen.treffer`; Spleef: nur der
+  Schneeboden ist abbaubar, Schläge zählen nicht; Labyrinth: jede Runde ein neuer Irrgarten (`Maze` punktsymmetrisch –
+  beide Startecken gleich weit vom Ziel, `Arena.reshuffleMaze` setzt nur geänderte Blöcke), wer zuerst auf dem Ziel in
+  der Mitte steht (Gold/Smaragd mit Leuchtfeuer) oder alle Gegner besiegt, gewinnt die Runde, Kompass zum nächsten
+  Gegner; Brücke: Blöcke in
+  Teamfarbe, Tor = Punkt, Fallen/Besiegt = zurück an den Start; UHC/Bau-Kampf/Brücke: nur eigene Blöcke abbauen,
+  Wasser/Lava nur im UHC, danach wird die Arena zurückgesetzt. „Bester aus 1/3/5“ (Warteschlange je Kampfart in der
+  config.yml, Herausforderung frei wählbar), `/duel <spieler> [kampfart] [arena] [1|3|5]`, Party gegen Party (zwei
+  Party-Leitungen), in der eigenen Party Jeder gegen jeden oder Zwei Teams (`/partykampf … [teams]`, zufällig gleich
+  groß geteilt, auch Brücke), Kampfmenü nach Gruppen, Ranglisten in der Halle wechseln.
+  Neue config-Schlüssel: `kits.<kampfart>.an`, `kits.<kampfart>.runden`, `sumo.aus-tiefe`, `boxen.treffer`,
+  `bruecke.tore`, `kombo.treffer-pause-ticks`, `angel.zug`, `labyrinth.kompass`, `labyrinth.ziel`,
+  `labyrinth.jede-runde-neu`, `party.max-spieler`. Neue Statistik-Werte: `hits_boxen`, `goals_bruecke`,
+  `goals_labyrinth`, `rounds_won`, `party_games`, `party_wins` (dazu `games_`/`wins_`/
+  `losses_`/`draws_`/`elo_<kampfart>` für alle 20). „Zurück ins Spiel“ (0.1.3) gilt in allen Kampfarten, auch zwischen
+  Runden und mit mehr als zwei Teams.
+  TESTZEILE
 - Version 0.1.3 (Branch `claude/zurueck-ins-spiel`, wartet auf Philips Go): **Zurück ins Spiel** (Philip: „Wenn das
   Game crasht, soll man zurück zum Spiel können“ und vor der Lobby nachfragen, solange man spielt). Netzwerk-
   Schnittstelle 2 (Kopie byte-gleich): `playing` vom Countdown bis zum Ausscheiden bzw. Ende (`Connected` meldet nur
@@ -69,4 +103,10 @@ PvP-Servern – nur Mechanik, eigene Namen und eigene Optik.
 - Philip: Go für `main` mit 0.1.3 (Zurück ins Spiel). Netzwerk-Repo: Einstellungs-Katalog um `rueckkehr-sekunden`
   ergänzen (0–600, Vorgabe 30); Nachfrage vor der Lobby und „Zurück ins Spiel“ baut das Netzwerk-Plugin.
 - Nicht echt geprüft: Rückkehr mit echtem Client über das echte Netzwerk (Lobby-Angebot), Bedrock.
-- Einstellungen (Zeitlimit, Elo, Arenen …) im Panel des Netzwerks (Einstellungs-Katalog) – gehört ins Netzwerk-Repo.
+- Einstellungen (Zeitlimit, Elo, Arenen …) im Panel des Netzwerks (Einstellungs-Katalog) – gehört ins Netzwerk-Repo;
+  neu seit 0.2.0: `kits.<kampfart>.an` (20 Schalter), `kits.<kampfart>.runden` (1/3/5, nicht bei `bruecke`),
+  `sumo.aus-tiefe` (0,5–20), `boxen.treffer` (1–1000), `bruecke.tore` (1–20), `kombo.treffer-pause-ticks` (0–10),
+  `angel.zug` (0–3), `labyrinth.kompass`, `labyrinth.ziel`, `labyrinth.jede-runde-neu` (je an/aus, Vorgabe an),
+  `party.max-spieler` (2–8). Webseite/Statistik: Kampfarten und Werte `hits_boxen`, `goals_bruecke`,
+  `goals_labyrinth`, `rounds_won`, `party_games`, `party_wins`.
+- Philip: Go für `main` mit 0.2.0 (mehr Kampfarten) – nach 0.1.3.

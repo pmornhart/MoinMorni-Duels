@@ -6,10 +6,12 @@ import de.moinmorni.duels.kit.Ability;
 import de.moinmorni.duels.kit.Kit;
 import de.moinmorni.duels.kit.Loadouts;
 import de.moinmorni.duels.match.QueueKey;
+import de.moinmorni.duels.world.ArenaType;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Stream;
@@ -21,12 +23,16 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
 
-/** Alle Befehle: /duel, /spectate, /verlassen, /stats, /top, /kit, /warteschlange, /duels (Verwaltung). */
+/**
+ * Alle Befehle: /duel, /spectate, /verlassen, /stats, /top, /kit, /warteschlange, /partykampf, /duels (Verwaltung).
+ */
 public final class Commands implements CommandExecutor, TabCompleter {
 
     private static final Set<String> ACCEPT = Set.of("annehmen", "accept", "ja", "yes", "ok");
     private static final Set<String> DENY = Set.of("ablehnen", "deny", "decline", "nein", "no");
     private static final Set<String> LEAVE = Set.of("verlassen", "leave", "raus");
+    /** /partykampf … teams: zwei Teams statt Jeder gegen jeden. */
+    private static final Set<String> SPLIT = Set.of("teams", "team", "zweiteams", "2teams", "split");
     private static final int TOP = 10;
 
     private final DuelsPlugin plugin;
@@ -60,6 +66,7 @@ public final class Commands implements CommandExecutor, TabCompleter {
             case "verlassen" -> leave(p);
             case "kit" -> kit(p, args);
             case "warteschlange" -> queue(p, args);
+            case "partykampf" -> partyFight(p, args);
             default -> {
                 return false;
             }
@@ -88,7 +95,11 @@ public final class Commands implements CommandExecutor, TabCompleter {
             p.sendMessage(Texts.msg(lang, "duel.not-found", Placeholder.unparsed("name", args[0])));
             return;
         }
-        if (second == null) {
+        Optional<Challenges.Options> options = options(p, args, 1);
+        if (options == null) {
+            return;
+        }
+        if (options.isEmpty()) {
             if (target.equals(p)) {
                 p.sendMessage(Texts.msg(lang, "duel.self"));
             } else if (!plugin.hall().inHall(p)) {
@@ -98,12 +109,77 @@ public final class Commands implements CommandExecutor, TabCompleter {
             }
             return;
         }
-        Optional<Kit> kit = Kit.parse(second);
-        if (kit.isEmpty()) {
-            p.sendMessage(Texts.msg(lang, "duel.unknown-kit"));
+        plugin.challenges().challenge(p, target, options.get());
+    }
+
+    /**
+     * Kampfart, Arena und Runden aus den Angaben ab {@code from} (Reihenfolge egal: „sumo 3“, „klassisch burghof“).
+     * Leer = keine Kampfart angegeben (Menü), {@code null} = etwas war nicht zu verstehen (Hinweis ist schon raus).
+     */
+    private Optional<Challenges.Options> options(Player p, String[] args, int from) {
+        String lang = plugin.lang(p);
+        Kit kit = null;
+        ArenaType arena = null;
+        int bestOf = 1;
+        for (int i = from; i < args.length; i++) {
+            String a = args[i];
+            Optional<Kit> k = kit == null ? Kit.parse(a) : Optional.empty();
+            if (k.isPresent()) {
+                kit = k.get();
+                continue;
+            }
+            Optional<ArenaType> t = ArenaType.parseNormal(a);
+            if (t.isPresent()) {
+                arena = t.get();
+                continue;
+            }
+            OptionalInt r = rounds(a);
+            if (r.isPresent()) {
+                bestOf = r.getAsInt();
+                continue;
+            }
+            p.sendMessage(kit == null ? Texts.msg(lang, "duel.unknown-kit")
+                    : Texts.msg(lang, "duel.unknown-arg", Placeholder.unparsed("arg", a)));
+            return null;
+        }
+        return kit == null ? Optional.empty() : Optional.of(new Challenges.Options(kit, arena, bestOf));
+    }
+
+    /** „1“, „3“, „5“, „bo3“, „bester3“, „best3“ → Runden. */
+    static OptionalInt rounds(String text) {
+        String s = text.toLowerCase(Locale.ROOT).replace("bester", "").replace("best", "").replace("bo", "")
+                .replace("aus", "").replace("of", "").replace("-", "").replace("_", "");
+        return switch (s) {
+            case "1" -> OptionalInt.of(1);
+            case "3" -> OptionalInt.of(3);
+            case "5" -> OptionalInt.of(5);
+            default -> OptionalInt.empty();
+        };
+    }
+
+    /**
+     * /partykampf [kampfart] [arena] [runden] [teams]: Party-Kampf in der eigenen Party – Jeder gegen jeden oder mit
+     * „teams“ zwei zufällige Teams (ohne Kampfart: Menü).
+     */
+    private void partyFight(Player p, String[] args) {
+        List<String> rest = new ArrayList<>();
+        boolean split = false;
+        for (String a : args) {
+            if (SPLIT.contains(a.toLowerCase(Locale.ROOT))) {
+                split = true;
+            } else {
+                rest.add(a);
+            }
+        }
+        Optional<Challenges.Options> options = options(p, rest.toArray(String[]::new), 0);
+        if (options == null) {
             return;
         }
-        plugin.challenges().challenge(p, target, kit.get());
+        if (options.isEmpty()) {
+            plugin.menus().openFfa(p, split);
+            return;
+        }
+        plugin.partyFights().start(p, options.get(), split);
     }
 
     private void spectate(Player p, String[] args) {
@@ -196,10 +272,10 @@ public final class Commands implements CommandExecutor, TabCompleter {
             plugin.menus().openEditorChooser(p);
             return;
         }
-        Optional<Loadouts.Loadout> l = Kit.parse(args[0])
-                .filter(k -> k != Kit.FAEHIGKEITEN)
-                .map(k -> Loadouts.of(k, null))
-                .or(() -> Ability.parse(args[0]).map(a -> Loadouts.of(Kit.FAEHIGKEITEN, a)));
+        Optional<Loadouts.Loadout> l = Ability.parse(args[0]).map(a -> Loadouts.of(Kit.FAEHIGKEITEN, a))
+                .or(() -> Kit.parse(args[0])
+                        .map(k -> Loadouts.of(k, k == Kit.FAEHIGKEITEN ? plugin.data(p).ability() : null)))
+                .filter(Loadouts.Loadout::editable);
         if (l.isEmpty()) {
             plugin.menus().openEditorChooser(p);
             return;
@@ -276,7 +352,7 @@ public final class Commands implements CommandExecutor, TabCompleter {
             case "spectate" -> args.length == 1 ? fighters() : List.of();
             case "stats" -> args.length == 1 ? names() : List.of();
             case "top" -> args.length == 1 ? kitIds() : List.of();
-            case "kit" -> args.length == 1 ? Loadouts.all().stream()
+            case "kit" -> args.length == 1 ? Loadouts.all().stream().filter(Loadouts.Loadout::editable)
                     .map(l -> l.ability() == null ? l.kit().id() : l.ability().id()).toList() : List.of();
             case "warteschlange" -> switch (args.length) {
                 case 1 -> Stream.concat(kitIds().stream(), Stream.of("verlassen")).toList();
@@ -284,6 +360,7 @@ public final class Commands implements CommandExecutor, TabCompleter {
                 case 3 -> List.of("1v1", "2v2");
                 default -> List.of();
             };
+            case "partykampf" -> Stream.concat(options().stream(), Stream.of("teams")).toList();
             case "duels" -> args.length == 1 ? List.of("info", "neubauen", "neuladen") : List.of();
             default -> List.of();
         };
@@ -305,9 +382,16 @@ public final class Commands implements CommandExecutor, TabCompleter {
             if ((ACCEPT.contains(first) || DENY.contains(first)) && sender instanceof Player p) {
                 return plugin.challenges().challengers(p.getUniqueId());
             }
-            return kitIds();
         }
-        return List.of();
+        return options();
+    }
+
+    /** Kampfarten, Arenen und Runden (für /duel und /partykampf). */
+    private static List<String> options() {
+        List<String> list = new ArrayList<>(kitIds());
+        ArenaType.normals().forEach(t -> list.add(t.id()));
+        list.addAll(List.of("1", "3", "5"));
+        return list;
     }
 
     private List<String> names() {

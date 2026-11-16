@@ -11,6 +11,8 @@ import de.moinmorni.duels.kit.Loadouts;
 import de.moinmorni.duels.match.Elo;
 import de.moinmorni.duels.match.QueueKey;
 import de.moinmorni.duels.world.Arena;
+import de.moinmorni.duels.world.ArenaType;
+import de.moinmorni.duels.world.SpecialArenas;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -42,7 +44,9 @@ import org.bukkit.potion.PotionEffect;
 
 /**
  * Kämpfe: starten (Arena belegen, Ausrüstung, Countdown), Ausscheiden (keine echten Tode – wer fallen würde, schaut
- * zu), Ende (Sieg, Niederlage, Unentschieden nach Zeitlimit), Wertung und Statistik, zurück in die Halle.
+ * zu), Runden („Bester aus 3/5“), Ende (Sieg, Niederlage, Unentschieden nach Zeitlimit), Wertung und Statistik, zurück
+ * in die Halle. Dazu die besonderen Kampfarten: Treffer zählen (Boxen), Tore und Wiederkommen (Brücke), Kompass zum
+ * Gegner (Labyrinth).
  *
  * <p>Verbindung mitten im Kampf weg: Der Platz bleibt {@code rueckkehr-sekunden} frei. Fehlt dadurch ein ganzes Team,
  * hält der Kampf an (alle eingefroren, die Zeit steht) und zeigt „Warte auf …“; sonst (2 gegen 2) kämpft das Team
@@ -64,6 +68,13 @@ public final class Fights {
     private static final long SECOND_MS = 1000L;
     /** So lange erfährt jemand beim nächsten Betreten noch, dass sein Kampf ohne ihn zu Ende ging. */
     private static final long MISSED_MS = 15 * 60 * SECOND_MS;
+    /** Pause zwischen zwei Runden. */
+    private static final int BREAK_SECONDS = 3;
+    /** Wer gerade wiederkommt (Brücke), zählt so lange nicht noch einmal als gestürzt. */
+    private static final long RESPAWN_GUARD_MS = 1500L;
+    private final Map<UUID, Long> respawned = new HashMap<>();
+    /** Startwerte für neue Irrgärten. */
+    private static final java.util.Random MAZE_RANDOM = new java.util.Random();
 
     private final DuelsPlugin plugin;
     private final Map<UUID, Fight> byPlayer = new HashMap<>();
@@ -102,27 +113,51 @@ public final class Fights {
         return n;
     }
 
+    /** Der Kampf, der gerade in dieser Arena läuft. */
+    public Optional<Fight> in(Arena arena) {
+        return fights.stream().filter(f -> f.arena == arena).findFirst();
+    }
+
     // ------------------------------------------------------------------ Start
 
-    /** Kampf starten; false, wenn jemand fehlt oder keine Arena frei ist. */
+    /**
+     * Ein Kampf: Kampfart, gewertet?, wie er zustande kam, die Teams (zwei oder bei „Jeder gegen jeden“ mehr),
+     * gewünschte Arena ({@code null} = egal) und Runden (Bester aus 1, 3 oder 5).
+     */
+    public record Request(Kit kit, boolean ranked, Fight.Kind kind, List<List<UUID>> teams, ArenaType arena,
+                          int bestOf) {
+    }
+
+    /** Kampf starten (2 Teams, eine Runde); false, wenn jemand fehlt oder keine Arena frei ist. */
     public boolean start(Kit kit, boolean ranked, List<UUID> teamA, List<UUID> teamB, boolean challenge) {
-        List<UUID> everyone = new ArrayList<>(teamA);
-        everyone.addAll(teamB);
+        return start(new Request(kit, ranked, challenge ? Fight.Kind.DUEL : Fight.Kind.QUEUE, List.of(teamA, teamB),
+                null, 1));
+    }
+
+    /** Kampf starten; false, wenn jemand fehlt oder keine Arena frei ist. */
+    public boolean start(Request r) {
+        Kit kit = r.kit();
+        if (r.teams().size() < 2 || r.teams().stream().anyMatch(List::isEmpty)) {
+            return false;
+        }
+        List<UUID> everyone = new ArrayList<>();
+        r.teams().forEach(everyone::addAll);
         for (UUID u : everyone) {
             Player p = plugin.getServer().getPlayer(u);
             if (p == null || !plugin.hall().inHall(p)) {
                 return false;
             }
         }
-        Optional<Arena> arena = plugin.arenas().reserve();
+        Optional<Arena> arena = plugin.arenas().reserve(kit, r.arena());
         if (arena.isEmpty()) {
             return false;
         }
-        Fight f = new Fight(nextId++, kit, ranked, challenge, arena.get(), teamA, teamB);
+        Fight f = new Fight(nextId++, kit, r.ranked(), r.kind(), r.bestOf(), arena.get(), r.teams());
         fights.add(f);
-        for (int t = 0; t < 2; t++) {
+        newMaze(f);
+        for (int t = 0; t < f.teams.size(); t++) {
             List<UUID> team = f.teams.get(t);
-            List<Location> spawns = f.arena.spawns(t, f.size);
+            List<Location> spawns = f.arena.spawns(t, f.teams.size(), team.size());
             for (int i = 0; i < team.size(); i++) {
                 UUID u = team.get(i);
                 Player p = plugin.getServer().getPlayer(u);
@@ -145,6 +180,14 @@ public final class Fights {
             String lang = plugin.lang(p);
             p.sendMessage(Texts.msg(lang, "fight.found", Placeholder.unparsed("names", opponentNames(f, u)),
                     Placeholder.unparsed("arena", Texts.raw(lang, f.arena.type().textKey()))));
+            if (f.tally.bestOf() > 1) {
+                p.sendMessage(Texts.msg(lang, "fight.bestof", Placeholder.unparsed("n", String.valueOf(f.tally.bestOf())),
+                        Placeholder.unparsed("wins", String.valueOf(f.tally.needed()))));
+            }
+            String hint = kit == Kit.LABYRINTH && !goalCounts(f) ? "hint.labyrinth.kampf" : "hint." + kit.id();
+            if (Texts.has(hint)) {
+                p.sendMessage(Texts.msg(lang, hint, hintValues()));
+            }
         }
         f.countdown = plugin.settings().countdownSeconds();
         f.task = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> tick(f), 1L, TICKS_PER_SECOND);
@@ -156,14 +199,51 @@ public final class Fights {
         return String.join(" & ", f.opponents(u).stream().map(f::name).toList());
     }
 
+    /** Zahlen für die Hinweise zu Beginn („wer zuerst 100 Treffer landet“). */
+    private TagResolver[] hintValues() {
+        return new TagResolver[] {
+            Placeholder.unparsed("hits", String.valueOf(plugin.kitSettings().boxingHits())),
+            Placeholder.unparsed("goals", String.valueOf(plugin.kitSettings().bridgeGoals()))};
+    }
+
     /** Ausrüstung anlegen, alles zurücksetzen. */
     private void prepare(Player p, Fight f, PlayerData d) {
         plugin.hall().reset(p);
-        p.setSaturation(f.kit == Kit.KLASSISCH ? CLASSIC_SATURATION : MODERN_SATURATION);
-        Hall.attackSpeed(p, f.kit == Kit.KLASSISCH ? NO_COOLDOWN : DEFAULT_ATTACK_SPEED);
+        p.setSaturation(f.kit.classicCombat() ? CLASSIC_SATURATION : MODERN_SATURATION);
+        combat(p, f);
+        if (f.kit.survival()) {
+            p.setGameMode(GameMode.SURVIVAL);
+        }
         Loadouts.Loadout l = Loadouts.of(f.kit, d.ability());
-        Loadouts.apply(p, l, d.layout(l.id()), plugin.lang(p));
+        Loadouts.apply(p, l, d.layout(l.id()), plugin.lang(p), Math.max(0, f.team(p.getUniqueId())));
+        if (f.kit == Kit.LABYRINTH && !plugin.kitSettings().mazeCompass()) {
+            for (int i = 0; i < p.getInventory().getSize(); i++) {
+                if (Loadouts.COMPASS.equals(de.moinmorni.duels.Items.kitTag(p.getInventory().getItem(i)))) {
+                    p.getInventory().setItem(i, null);
+                }
+            }
+        }
         plugin.abilities().reset(p);
+    }
+
+    /**
+     * Kampfgefühl der Kampfart: ohne Abklingzeit beim Schlagen (klassisch) oder wie heute; bei Kombo kurze Pause
+     * zwischen Treffern. Gilt nur, solange der Spieler da ist – darum auch beim Wiederkommen.
+     */
+    private void combat(Player p, Fight f) {
+        Hall.attackSpeed(p, f.kit.classicCombat() ? NO_COOLDOWN : DEFAULT_ATTACK_SPEED);
+        if (f.kit == Kit.KOMBO) {
+            // Paper wertet einen Treffer nur, wenn seit dem letzten mehr als die Hälfte dieser Zeit vergangen ist.
+            p.setMaximumNoDamageTicks(2 * plugin.kitSettings().comboPauseTicks());
+        }
+    }
+
+    /** Startplatz eines Teilnehmers (für Wiederkommen und neue Runden). */
+    private Location spawnOf(Fight f, UUID u) {
+        int team = Math.max(0, f.team(u));
+        List<UUID> members = f.teams.get(team);
+        List<Location> spawns = f.arena.spawns(team, f.teams.size(), members.size());
+        return spawns.get(Math.max(0, members.indexOf(u)) % spawns.size());
     }
 
     // ------------------------------------------------------------------ Ablauf
@@ -190,6 +270,13 @@ public final class Fights {
                     running(f);
                 }
             }
+            case BREAK -> {
+                if (f.paused) {
+                    pausedTick(f);
+                } else if (--f.breakLeft <= 0) {
+                    nextRound(f);
+                }
+            }
             case ENDED -> {
                 if (--f.afterLeft <= 0) {
                     cleanup(f);
@@ -204,15 +291,18 @@ public final class Fights {
             forEachParticipant(f, p -> {
                 String lang = plugin.lang(p);
                 Component num = Component.text(String.valueOf(n), TextColor.color(Texts.GOLD), TextDecoration.BOLD);
-                Ui.title(p, num, Texts.text(lang, "fight.countdown.sub",
+                Ui.title(p, num, Texts.text(lang, f.tally.bestOf() > 1 ? "fight.countdown.round" : "fight.countdown.sub",
                         Placeholder.unparsed("kit", Texts.raw(lang, "kit." + f.kit.id())),
+                        Placeholder.unparsed("round", String.valueOf(f.round)),
                         Placeholder.unparsed("names", opponentNames(f, p.getUniqueId()))), 900);
                 Ui.sound(p, "block.note_block.pling", 0.8f + 0.2f * (4 - Math.min(3, n)));
             });
             return;
         }
         f.phase = Fight.Phase.RUNNING;
-        f.startedAt = System.currentTimeMillis();
+        if (f.startedAt == 0) {
+            f.startedAt = System.currentTimeMillis();
+        }
         forEachParticipant(f, p -> {
             String lang = plugin.lang(p);
             Ui.title(p, Texts.text(lang, "fight.go"), Texts.text(lang, "fight.go.sub"), 700);
@@ -234,16 +324,18 @@ public final class Fights {
             }
         }
         if (left <= 0) {
-            finish(f, -1);
+            finish(f, f.tally.leader());
             return;
         }
         long now = System.currentTimeMillis();
+        double voidY = voidY(f);
         for (UUID u : List.copyOf(f.alive)) {
             Player p = plugin.getServer().getPlayer(u);
-            if (p != null && p.getWorld() == f.arena.world() && p.getLocation().getY() < f.arena.voidY()) {
-                eliminate(f, p, f.recentDamager(u, now), Fight.Cause.VOID);
+            if (p != null && p.getWorld() == f.arena.world() && p.getLocation().getY() < voidY) {
+                down(f, p, f.recentDamager(u, now), Fight.Cause.VOID);
             }
         }
+        special(f);
         for (UUID u : List.copyOf(f.spectators)) {
             Player s = plugin.getServer().getPlayer(u);
             if (s != null && (s.getWorld() != f.arena.world()
@@ -289,7 +381,11 @@ public final class Fights {
         if (f.phase == Fight.Phase.ENDED) {
             return;
         }
-        if (teamGone(f, 0) || teamGone(f, 1)) {
+        boolean gone = false;
+        for (int t = 0; t < f.teams.size(); t++) {
+            gone |= teamGone(f, t);
+        }
+        if (gone) {
             if (!f.paused) {
                 f.paused = true;
                 f.pausedAt = System.currentTimeMillis();
@@ -351,7 +447,7 @@ public final class Fights {
         long now = System.currentTimeMillis();
         List<String> names = new ArrayList<>();
         long until = now;
-        for (int t = 0; t < 2; t++) {
+        for (int t = 0; t < f.teams.size(); t++) {
             if (!teamGone(f, t)) {
                 continue;
             }
@@ -434,8 +530,14 @@ public final class Fights {
         }
         missed.remove(u);
         String lang = plugin.lang(p);
-        a.state().restore(p);
-        Hall.attackSpeed(p, f.kit == Kit.KLASSISCH ? NO_COOLDOWN : DEFAULT_ATTACK_SPEED);
+        if (f.fresh.remove(u)) {
+            // Inzwischen neue Runde oder ein Tor: frisch an den eigenen Start
+            prepare(p, f, f.data.get(u));
+            p.teleport(spawnOf(f, u));
+        } else {
+            a.state().restore(p);
+            combat(p, f);
+        }
         plugin.net().holdSlot(u, 0);
         plugin.net().playing(p, true);
         if (f.phase == Fight.Phase.RUNNING) {
@@ -472,9 +574,11 @@ public final class Fights {
         float progress = Math.max(0f, Math.min(1f, left / (float) limit));
         for (String lang : new String[] {"de", "en"}) {
             BossBar bar = bar(f, lang);
-            bar.name(Texts.text(lang, "fight.bossbar",
+            String score = scoreText(f, lang);
+            bar.name(Texts.text(lang, score.isEmpty() ? "fight.bossbar" : "fight.bossbar.score",
                     Placeholder.unparsed("kit", Texts.raw(lang, "kit." + f.kit.id())),
                     Placeholder.unparsed("arena", Texts.raw(lang, f.arena.type().textKey())),
+                    Placeholder.unparsed("score", score),
                     Placeholder.unparsed("time", Ui.clock(left))));
             bar.progress(progress);
             bar.color(left <= 30 ? BossBar.Color.RED : BossBar.Color.GREEN);
@@ -505,7 +609,8 @@ public final class Fights {
         }
         String key = switch (cause) {
             case KILLED, DIED -> credited != null ? "fight.killed" : "fight.died";
-            case VOID -> "fight.void";
+            case VOID -> f.kit == Kit.SUMO ? (credited != null ? "fight.void.sumo.by" : "fight.void.sumo")
+                    : f.kit == Kit.SPLEEF ? "fight.void.spleef" : "fight.void";
             case QUIT -> "fight.quit";
             case LEFT -> "fight.left";
             case FORFEIT -> "fight.forfeit";
@@ -560,13 +665,31 @@ public final class Fights {
         updatePause(f);
     }
 
+    /**
+     * Steht nur noch ein Team (oder keins), ist die Runde vorbei. Ist von den anderen Teams niemand mehr dabei (alle
+     * aufgegeben oder weg), ist der ganze Kampf vorbei.
+     */
     private void checkEnd(Fight f) {
-        boolean a = f.teams.get(0).stream().anyMatch(f.alive::contains);
-        boolean b = f.teams.get(1).stream().anyMatch(f.alive::contains);
-        if (a && b) {
+        List<Integer> standing = new ArrayList<>();
+        List<Integer> present = new ArrayList<>();
+        for (int t = 0; t < f.teams.size(); t++) {
+            List<UUID> team = f.teams.get(t);
+            if (team.stream().anyMatch(f.alive::contains)) {
+                standing.add(t);
+            }
+            if (team.stream().anyMatch(u -> !f.gaveUp.contains(u))) {
+                present.add(t);
+            }
+        }
+        if (standing.size() > 1) {
             return;
         }
-        finish(f, a ? 0 : b ? 1 : -1);
+        int roundWinner = standing.size() == 1 ? standing.get(0) : -1;
+        if (present.size() <= 1) {
+            finish(f, present.size() == 1 ? present.get(0) : roundWinner);
+            return;
+        }
+        roundOver(f, roundWinner);
     }
 
     // ------------------------------------------------------------------ Ende
@@ -583,7 +706,8 @@ public final class Fights {
         }
         f.paused = false;
         f.resumeIn = 0;
-        double[] avg = {average(f, 0), average(f, 1)};
+        boolean rated = f.ranked && f.teams.size() == 2;
+        double[] avg = rated ? new double[] {average(f, 0), average(f, 1)} : new double[0];
         int k = plugin.settings().kFactor();
         for (UUID u : f.participants()) {
             int team = f.team(u);
@@ -591,7 +715,7 @@ public final class Fights {
                     : winner < 0 ? KitStats.Result.DRAW : team == winner ? KitStats.Result.WIN : KitStats.Result.LOSS;
             PlayerData d = f.data.get(u);
             KitStats s = d.kit(f.kit);
-            int delta = f.ranked ? Elo.delta(avg[team], avg[1 - team], r.score(), k) : 0;
+            int delta = rated ? Elo.delta(avg[team], avg[1 - team], r.score(), k) : 0;
             int kills = f.kills.getOrDefault(u, 0);
             int deaths = f.deaths.getOrDefault(u, 0);
             s.record(r, kills, deaths, delta, f.ranked);
@@ -613,7 +737,7 @@ public final class Fights {
             Ui.title(p, Texts.text(lang, t + ".title"), Texts.text(lang, t + ".sub"), 2500);
             Ui.sound(p, r == KitStats.Result.WIN ? "ui.toast.challenge_complete" : "block.note_block.bass",
                     r == KitStats.Result.WIN ? 1f : 0.6f);
-            if (f.ranked) {
+            if (rated) {
                 Component change = Component.text((delta >= 0 ? "+" : "") + delta,
                         delta > 0 ? NamedTextColor.GREEN : delta < 0 ? NamedTextColor.RED : NamedTextColor.GRAY);
                 p.sendMessage(Texts.msg(lang, "fight.result.elo",
@@ -625,9 +749,10 @@ public final class Fights {
         if (winner >= 0) {
             String names = f.teamNames(winner);
             broadcast(f, "fight.result.win", lang -> new TagResolver[] {Placeholder.unparsed("names", names)});
+            resultScore(f);
             for (UUID u : f.teams.get(winner)) {
                 Player p = plugin.getServer().getPlayer(u);
-                if (p != null && f.alive.contains(u)) {
+                if (p != null && f.alive.contains(u) && f.kit.hitsHurt()) {
                     double hp = p.getHealth();
                     broadcast(f, "fight.result.health", lang -> new TagResolver[] {
                             Placeholder.unparsed("name", p.getName()), Placeholder.unparsed("hp", Ui.hearts(hp, lang))});
@@ -636,6 +761,7 @@ public final class Fights {
             }
         } else {
             broadcast(f, "fight.result.draw", lang -> new TagResolver[0]);
+            resultScore(f);
         }
         int back = plugin.settings().afterSeconds();
         broadcast(f, "fight.back", lang -> new TagResolver[] {Placeholder.unparsed("n", String.valueOf(back))});
@@ -686,9 +812,31 @@ public final class Fights {
                 add.put("ranked_wins", 1L);
             }
         }
+        int hits = f.hits.getOrDefault(u, 0);
+        if (hits > 0) {
+            add.put("hits_boxen", (long) hits);
+        }
+        int goals = f.goals.getOrDefault(u, 0);
+        if (goals > 0) {
+            add.put("goals_bruecke", (long) goals);
+        }
+        int finishes = f.finishes.getOrDefault(u, 0);
+        if (finishes > 0) {
+            add.put("goals_labyrinth", (long) finishes);
+        }
+        int rounds = f.tally.rounds(f.team(u));
+        if (f.tally.bestOf() > 1 && rounds > 0) {
+            add.put("rounds_won", (long) rounds);
+        }
+        if (f.kind == Fight.Kind.PARTY || f.kind == Fight.Kind.FFA) {
+            add.put("party_games", 1L);
+            if (r == KitStats.Result.WIN) {
+                add.put("party_wins", 1L);
+            }
+        }
         Map<String, Long> best = new LinkedHashMap<>();
         best.put("streak_best", (long) d.bestStreak());
-        if (f.ranked) {
+        if (f.ranked && f.teams.size() == 2) {
             best.put("elo_" + kit, (long) s.elo);
         }
         plugin.net().stats(u, add, best);
@@ -712,6 +860,7 @@ public final class Fights {
             f.task.cancel();
         }
         fights.remove(f);
+        f.participants().forEach(respawned::remove);
         for (UUID u : f.participants()) {
             if (byPlayer.get(u) == f) {
                 byPlayer.remove(u);
@@ -747,6 +896,362 @@ public final class Fights {
             }
         }
         arena.log().restore(w);
+    }
+
+    // ------------------------------------------------------------------ Runden
+
+    /** Eine Runde ist vorbei: Kampf entschieden, oder kurze Pause und die nächste Runde. */
+    private void roundOver(Fight f, int winner) {
+        if (f.tally.bestOf() <= 1) {
+            finish(f, winner);
+            return;
+        }
+        if (winner >= 0 && f.tally.roundWon(winner)) {
+            finish(f, winner);
+            return;
+        }
+        String score = f.tally.roundsText();
+        if (winner >= 0) {
+            String names = f.teamNames(winner);
+            broadcast(f, "fight.round.won", lang -> new TagResolver[] {Placeholder.unparsed("names", names),
+                    Placeholder.unparsed("round", String.valueOf(f.round)), Placeholder.unparsed("score", score)});
+        } else {
+            broadcast(f, "fight.round.draw", lang -> new TagResolver[] {
+                    Placeholder.unparsed("round", String.valueOf(f.round)), Placeholder.unparsed("score", score)});
+        }
+        forEachParticipant(f, p -> {
+            String lang = plugin.lang(p);
+            int team = f.team(p.getUniqueId());
+            String key = winner < 0 ? "fight.round.draw.title" : team == winner ? "fight.round.win.title"
+                    : "fight.round.lose.title";
+            Ui.title(p, Texts.text(lang, key), Texts.text(lang, "fight.round.sub",
+                    Placeholder.unparsed("score", score)), 1800);
+            Ui.sound(p, team == winner ? "entity.player.levelup" : "block.note_block.bass", 1.2f);
+        });
+        f.phase = Fight.Phase.BREAK;
+        f.breakLeft = BREAK_SECONDS;
+    }
+
+    /** Nächste Runde: Arena zurücksetzen, alle (außer wer aufgegeben hat) wieder an den Start. */
+    private void nextRound(Fight f) {
+        f.round++;
+        f.tally.newRound();
+        clearArena(f.arena);
+        newMaze(f);
+        f.placed.clear();
+        f.alive.clear();
+        f.lastDamager.clear();
+        f.lastDamageAt.clear();
+        for (UUID u : f.participants()) {
+            if (f.gaveUp.contains(u)) {
+                continue;
+            }
+            if (f.away.containsKey(u)) {
+                // Platz ist frei gehalten: bleibt dabei und kommt frisch an den Start, wenn er wiederkommt
+                f.alive.add(u);
+                f.fresh.add(u);
+            } else if (plugin.getServer().getPlayer(u) == null || byPlayer.get(u) != f) {
+                f.gaveUp.add(u);
+            }
+        }
+        placeAll(f, true);
+        f.phase = Fight.Phase.COUNTDOWN;
+        f.countdown = plugin.settings().countdownSeconds();
+        checkEnd(f);
+        updatePause(f);
+    }
+
+    /** Alle Teilnehmer an ihren Startplatz, Ausrüstung frisch ({@code revive} = Ausgeschiedene kommen wieder). */
+    private void placeAll(Fight f, boolean revive) {
+        for (int t = 0; t < f.teams.size(); t++) {
+            List<UUID> team = f.teams.get(t);
+            List<Location> spawns = f.arena.spawns(t, f.teams.size(), team.size());
+            for (int i = 0; i < team.size(); i++) {
+                UUID u = team.get(i);
+                Player p = plugin.getServer().getPlayer(u);
+                if (p == null || f.gaveUp.contains(u) || byPlayer.get(u) != f || !revive && !f.alive.contains(u)) {
+                    continue;
+                }
+                f.alive.add(u);
+                prepare(p, f, f.data.get(u));
+                p.teleportAsync(spawns.get(i % spawns.size()));
+            }
+        }
+    }
+
+    /** Endstand (Runden, Treffer, Tore) für alle. */
+    private void resultScore(Fight f) {
+        if (f.tally.bestOf() > 1) {
+            String score = f.tally.roundsText();
+            broadcast(f, "fight.result.rounds", lang -> new TagResolver[] {Placeholder.unparsed("score", score)});
+        }
+        if (f.kit == Kit.BOXEN) {
+            String score = f.tally.scoreText();
+            broadcast(f, "boxen.result", lang -> new TagResolver[] {Placeholder.unparsed("score", score)});
+        } else if (f.kit == Kit.BRUECKE) {
+            String score = f.tally.scoreText();
+            broadcast(f, "bruecke.result", lang -> new TagResolver[] {Placeholder.unparsed("score", score)});
+        }
+    }
+
+    /** Stand für die Leiste oben: Runde, Treffer, Tore (leer = nichts zu zählen). */
+    private String scoreText(Fight f, String lang) {
+        List<String> parts = new ArrayList<>();
+        if (f.tally.bestOf() > 1) {
+            parts.add(Texts.plain(lang, "score.round", Placeholder.unparsed("round", String.valueOf(f.round)),
+                    Placeholder.unparsed("score", f.tally.roundsText())));
+        }
+        if (f.kit == Kit.BOXEN) {
+            parts.add(Texts.plain(lang, "score.hits", Placeholder.unparsed("score", f.tally.scoreText()),
+                    Placeholder.unparsed("target", String.valueOf(plugin.kitSettings().boxingHits()))));
+        } else if (f.kit == Kit.BRUECKE) {
+            parts.add(Texts.plain(lang, "score.goals", Placeholder.unparsed("score", f.tally.scoreText()),
+                    Placeholder.unparsed("target", String.valueOf(plugin.kitSettings().bridgeGoals()))));
+        }
+        return String.join(" · ", parts);
+    }
+
+    // ------------------------------------------------------------------ Besondere Kampfarten
+
+    /** Ab hier ist man herausgefallen (Sumo: Tiefe aus der config.yml). */
+    public double voidY(Fight f) {
+        if (f.kit == Kit.SUMO) {
+            return Zones.sumoVoid(f.arena.oy(), plugin.kitSettings().sumoDepth());
+        }
+        return f.arena.voidY();
+    }
+
+    /**
+     * Besiegt oder gestürzt: bei der Brücke kommt man an seinem Start wieder, sonst scheidet man aus.
+     */
+    public void down(Fight f, Player p, UUID killer, Fight.Cause cause) {
+        UUID u = p.getUniqueId();
+        boolean back = cause == Fight.Cause.KILLED || cause == Fight.Cause.DIED || cause == Fight.Cause.VOID;
+        if (f.kit.respawns() && back && f.phase == Fight.Phase.RUNNING && f.alive.contains(u)) {
+            Long last = respawned.get(u);
+            if (last == null || System.currentTimeMillis() - last > RESPAWN_GUARD_MS) {
+                respawn(f, p, killer, cause, false);
+            }
+            return;
+        }
+        eliminate(f, p, killer, cause);
+    }
+
+    /** Brücke: zählt als Tod (Kill für den Gegner), dann sofort zurück an den eigenen Start, Ausrüstung frisch. */
+    private void respawn(Fight f, Player p, UUID killer, Fight.Cause cause, boolean ownGoal) {
+        UUID v = p.getUniqueId();
+        respawned.put(v, System.currentTimeMillis());
+        f.deaths.merge(v, 1, Integer::sum);
+        UUID credited = killer != null && !killer.equals(v) && f.team(killer) >= 0 && !f.sameTeam(killer, v)
+                ? killer : null;
+        if (credited != null) {
+            f.kills.merge(credited, 1, Integer::sum);
+            Player k = plugin.getServer().getPlayer(credited);
+            if (k != null) {
+                Ui.sound(k, "entity.experience_orb.pickup", 1.4f);
+            }
+        }
+        String key = ownGoal ? "bruecke.own-goal" : cause == Fight.Cause.VOID
+                ? (credited != null ? "bruecke.fell.by" : "bruecke.fell")
+                : (credited != null ? "fight.killed" : "fight.died");
+        String victimName = f.name(v);
+        String killerName = credited == null ? "" : f.name(credited);
+        broadcast(f, key, lang -> new TagResolver[] {Placeholder.unparsed("victim", victimName),
+                Placeholder.unparsed("killer", killerName)});
+        Location to = spawnOf(f, v);
+        prepare(p, f, f.data.get(v));
+        String lang = plugin.lang(p);
+        Ui.title(p, Texts.text(lang, "bruecke.back.title"), Texts.text(lang, "bruecke.back.sub"), 1200);
+        Ui.sound(p, "entity.player.hurt", 0.8f);
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            if (p.isOnline() && byPlayer.get(v) == f) {
+                p.setFallDistance(0f);
+                p.teleport(to);
+            }
+        });
+    }
+
+    /**
+     * Brücke: wer ins Tor der anderen springt, punktet; ins eigene Tor springen ist wie herunterfallen. Labyrinth: wer
+     * zuerst auf dem Ziel in der Mitte steht, gewinnt die Runde.
+     */
+    public void moved(Fight f, Player p, Location to) {
+        UUID u = p.getUniqueId();
+        if (f.phase != Fight.Phase.RUNNING || !f.alive.contains(u) || f.paused) {
+            return;
+        }
+        if (f.kit == Kit.LABYRINTH) {
+            if (goalCounts(f) && Zones.mazeGoal(to.getBlockX() - f.arena.ox(),
+                    to.getBlockY() - f.arena.oy(), to.getBlockZ() - f.arena.oz())) {
+                reachedGoal(f, p);
+            }
+            return;
+        }
+        if (f.kit != Kit.BRUECKE) {
+            return;
+        }
+        int goal = Zones.bridgeGoal(to.getBlockX() - f.arena.ox(), to.getBlockY() - f.arena.oy(),
+                to.getBlockZ() - f.arena.oz());
+        if (goal < 0) {
+            return;
+        }
+        int team = f.team(u);
+        if (goal == team) {
+            Long last = respawned.get(u);
+            if (last == null || System.currentTimeMillis() - last > RESPAWN_GUARD_MS) {
+                respawn(f, p, null, Fight.Cause.VOID, true);
+            }
+            return;
+        }
+        scored(f, p, team);
+    }
+
+    private void scored(Fight f, Player p, int team) {
+        UUID u = p.getUniqueId();
+        f.goals.merge(u, 1, Integer::sum);
+        boolean won = f.tally.add(team, 1, plugin.kitSettings().bridgeGoals());
+        String name = p.getName();
+        String score = f.tally.scoreText();
+        broadcast(f, "bruecke.goal", lang -> new TagResolver[] {Placeholder.unparsed("name", name),
+                Placeholder.unparsed("team", Texts.raw(lang, team == 0 ? "team.blau" : "team.rot")),
+                Placeholder.unparsed("score", score)});
+        forEachParticipant(f, q -> {
+            String lang = plugin.lang(q);
+            Ui.title(q, Texts.text(lang, "bruecke.goal.title"), Texts.text(lang, "bruecke.goal.sub",
+                    Placeholder.unparsed("name", name), Placeholder.unparsed("score", score)), 1500);
+            Ui.sound(q, f.team(q.getUniqueId()) == team ? "entity.firework_rocket.twinkle" : "block.note_block.bass",
+                    1.0f);
+        });
+        if (won) {
+            finish(f, team);
+            return;
+        }
+        // Alle zurück an den Start, kurz eingefroren, dann weiter (gesetzte Blöcke bleiben)
+        for (UUID m : f.participants()) {
+            respawned.put(m, System.currentTimeMillis());
+            if (f.away.containsKey(m)) {
+                f.fresh.add(m);
+            }
+        }
+        placeAll(f, false);
+        f.phase = Fight.Phase.COUNTDOWN;
+        f.countdown = plugin.settings().countdownSeconds();
+    }
+
+    /** Labyrinth: neuer Irrgarten vor jeder Runde (oder immer derselbe, wenn das in der config.yml aus ist). */
+    private void newMaze(Fight f) {
+        if (f.kit != Kit.LABYRINTH) {
+            return;
+        }
+        long seed = plugin.kitSettings().mazeReshuffle() ? MAZE_RANDOM.nextLong() : SpecialArenas.MAZE_SEED;
+        f.arena.reshuffleMaze(seed);
+    }
+
+    /**
+     * Zählt im Labyrinth das Ziel? Nur wenn es in der config.yml an ist und alle in einer Ecke starten (bis zu vier
+     * Seiten) – mit mehr Leuten starten manche näher am Ziel, dann zählt nur der Kampf.
+     */
+    private boolean goalCounts(Fight f) {
+        return plugin.kitSettings().mazeGoal() && f.teams.size() <= SpecialArenas.MAZE_CORNERS;
+    }
+
+    /** Labyrinth: jemand steht als Erstes auf dem Ziel – sein Team gewinnt die Runde. */
+    private void reachedGoal(Fight f, Player p) {
+        UUID u = p.getUniqueId();
+        int team = f.team(u);
+        if (team < 0) {
+            return;
+        }
+        f.finishes.merge(u, 1, Integer::sum);
+        String name = p.getName();
+        broadcast(f, "labyrinth.goal", lang -> new TagResolver[] {Placeholder.unparsed("name", name)});
+        forEachParticipant(f, q -> {
+            String lang = plugin.lang(q);
+            boolean own = f.team(q.getUniqueId()) == team;
+            Ui.title(q, Texts.text(lang, own ? "labyrinth.goal.title" : "labyrinth.goal.lost"),
+                    Texts.text(lang, "labyrinth.goal.sub", Placeholder.unparsed("name", name)), 1500);
+            Ui.sound(q, own ? "entity.firework_rocket.twinkle" : "block.note_block.bass", 1.0f);
+        });
+        firework(f.arena.center());
+        roundOver(f, team);
+    }
+
+    /** Boxen: ein Treffer zählt; wer (bzw. welches Team) zuerst genug hat, gewinnt die Runde. */
+    public void boxHit(Fight f, Player attacker) {
+        UUID a = attacker.getUniqueId();
+        int team = f.team(a);
+        if (team < 0 || f.phase != Fight.Phase.RUNNING) {
+            return;
+        }
+        f.hits.merge(a, 1, Integer::sum);
+        if (f.tally.add(team, 1, plugin.kitSettings().boxingHits())) {
+            String names = f.teamNames(team);
+            String score = f.tally.scoreText();
+            broadcast(f, "boxen.reached", lang -> new TagResolver[] {Placeholder.unparsed("names", names),
+                    Placeholder.unparsed("score", score)});
+            roundOver(f, team);
+        }
+    }
+
+    /** Jede Sekunde im laufenden Kampf: Kompass zum Gegner, Treffer in der Aktionsleiste, Tore prüfen. */
+    private void special(Fight f) {
+        if (f.kit == Kit.LABYRINTH && plugin.kitSettings().mazeCompass()) {
+            for (UUID u : f.alive) {
+                Player p = plugin.getServer().getPlayer(u);
+                if (p == null) {
+                    continue;
+                }
+                Player nearest = null;
+                double best = Double.MAX_VALUE;
+                for (UUID o : f.opponents(u)) {
+                    Player q = plugin.getServer().getPlayer(o);
+                    if (q != null && f.alive.contains(o) && q.getWorld() == p.getWorld()) {
+                        double d = q.getLocation().distanceSquared(p.getLocation());
+                        if (d < best) {
+                            best = d;
+                            nearest = q;
+                        }
+                    }
+                }
+                if (nearest != null) {
+                    p.setCompassTarget(nearest.getLocation());
+                }
+            }
+        }
+        if (f.kit == Kit.LABYRINTH) {
+            for (UUID u : List.copyOf(f.alive)) {
+                Player p = plugin.getServer().getPlayer(u);
+                if (p != null && f.phase == Fight.Phase.RUNNING) {
+                    moved(f, p, p.getLocation());
+                }
+            }
+        } else if (f.kit == Kit.BOXEN) {
+            int target = plugin.kitSettings().boxingHits();
+            for (UUID u : f.alive) {
+                Player p = plugin.getServer().getPlayer(u);
+                int team = f.team(u);
+                if (p == null || team < 0) {
+                    continue;
+                }
+                int other = 0;
+                for (int t = 0; t < f.teams.size(); t++) {
+                    if (t != team) {
+                        other = Math.max(other, f.tally.score(t));
+                    }
+                }
+                String lang = plugin.lang(p);
+                p.sendActionBar(Texts.text(lang, "boxen.bar", Placeholder.unparsed("own", String.valueOf(f.tally.score(team))),
+                        Placeholder.unparsed("other", String.valueOf(other)),
+                        Placeholder.unparsed("target", String.valueOf(target))));
+            }
+        } else if (f.kit == Kit.BRUECKE) {
+            for (UUID u : List.copyOf(f.alive)) {
+                Player p = plugin.getServer().getPlayer(u);
+                if (p != null && f.phase == Fight.Phase.RUNNING) {
+                    moved(f, p, p.getLocation());
+                }
+            }
+        }
     }
 
     // ------------------------------------------------------------------ Verlassen, Zuschauen

@@ -220,9 +220,12 @@ public final class PlayerListener implements Listener {
                 }
                 return;
             }
-            if (f.phase() == Fight.Phase.RUNNING && f.isAlive(u) && to.getWorld() == plugin.world()
-                    && to.getY() < f.arena().voidY()) {
-                plugin.fights().eliminate(f, p, f.recentDamager(u, System.currentTimeMillis()), Fight.Cause.VOID);
+            if (f.phase() == Fight.Phase.RUNNING && f.isAlive(u) && to.getWorld() == plugin.world()) {
+                if (to.getY() < plugin.fights().voidY(f)) {
+                    plugin.fights().down(f, p, f.recentDamager(u, System.currentTimeMillis()), Fight.Cause.VOID);
+                } else {
+                    plugin.fights().moved(f, p, to);
+                }
             }
             return;
         }

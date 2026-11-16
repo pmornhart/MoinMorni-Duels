@@ -73,7 +73,7 @@ public final class KitEditor extends Menu {
     }
 
     private void fill(Layout layout) {
-        ItemStack[] contents = Loadouts.contents(loadout, layout, lang);
+        ItemStack[] contents = Loadouts.contents(loadout, layout, lang, 0);
         for (int i = 0; i < EDIT_SLOTS; i++) {
             getInventory().setItem(editorSlot(i), contents[i]);
         }

@@ -2,7 +2,7 @@ name: MoinMorniDuels
 version: '${project.version}'
 main: de.moinmorni.duels.DuelsPlugin
 api-version: '1.21'
-description: Duels für das MoinMorni-Netzwerk – 1 gegen 1 und 2 gegen 2, Klassisch, Modern und Fähigkeiten.
+description: Duels für das MoinMorni-Netzwerk – 20 Kampfarten von Klassisch bis Brücke, 1 gegen 1, 2 gegen 2 und Party-Kämpfe.
 authors: [MoinMorni]
 website: https://moinmorni.net
 # Läuft mit dem Netzwerk-Plugin (Sprache, Party, Statistik) und auch allein.
@@ -11,7 +11,7 @@ softdepend: [MoinMorni]
 commands:
   duel:
     description: Jemanden zum Duell herausfordern / Herausforderung annehmen oder ablehnen
-    usage: /duel <spieler> [klassisch|modern|fähigkeiten] · /duel annehmen|ablehnen [spieler]
+    usage: /duel <spieler> [kampfart] [arena] [1|3|5] · /duel annehmen|ablehnen [spieler]
     aliases: [duell, herausfordern]
   spectate:
     description: Einem Kampf zuschauen
@@ -27,16 +27,20 @@ commands:
     aliases: [statistik]
   top:
     description: Rangliste einer Kampfart
-    usage: /top [klassisch|modern|fähigkeiten]
+    usage: /top [kampfart]
     aliases: [rangliste]
   kit:
     description: Kit-Editor öffnen
-    usage: /kit [klassisch|modern|bergfuehrer|schmied|kraeuterfrau|jaeger]
+    usage: /kit [kampfart|bergfuehrer|schmied|kraeuterfrau|jaeger]
     aliases: [kiteditor, kits]
   warteschlange:
     description: Gegner suchen
-    usage: /warteschlange <klassisch|modern|fähigkeiten> <locker|gewertet> <1v1|2v2> · /warteschlange verlassen
+    usage: /warteschlange <kampfart> <locker|gewertet> <1v1|2v2> · /warteschlange verlassen
     aliases: [queue, suchen]
+  partykampf:
+    description: Party-Kampf in der eigenen Party starten – Jeder gegen jeden oder zwei Teams (Party-Leitung)
+    usage: /partykampf [kampfart] [arena] [1|3|5] [teams]
+    aliases: [partyffa, jedergegenjeden]
   duels:
     description: Verwaltung (info, neubauen, neuladen)
     usage: /duels <info|neubauen|neuladen>
