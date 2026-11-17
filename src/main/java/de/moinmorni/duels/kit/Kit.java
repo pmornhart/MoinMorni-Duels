@@ -65,7 +65,7 @@ public enum Kit {
     /** Gruppen im Menü – je Gruppe eine Reihe. */
     public enum Group {
         KLASSISCH("klassisch", Material.IRON_SWORD),
-        MODERN("modern", Material.SHIELD),
+        MODERN("modern", Material.NETHERITE_SWORD),
         SPASS("spass", Material.FIREWORK_ROCKET);
 
         private final String id;

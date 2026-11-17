@@ -58,7 +58,15 @@ Party gegen Party und Jeder gegen jeden.
   `goals_labyrinth`, `rounds_won`, `party_games`, `party_wins` (dazu `games_`/`wins_`/`losses_`/`draws_`/`elo_<kampfart>`
   für alle 20). „Zurück ins Spiel“ (0.1.3) gilt in allen Kampfarten, auch zwischen Runden und mit mehr als zwei Teams.
   `test/run.sh` mit `XMX`, `XMS`, `JAVA_OPTS`, `COPIES` für einen knappen Rechner.
-  TESTZEILE
+  Geprüft: 100 Unit-Tests (neu u. a. `MazeTest` – Baum, alle Ecken gleich weit über 300 Startwerte –, `ZonesTest`,
+  `KitSettingsTest`, `ArenaShapeTest`, `PartyFightsTest`), Paper 26.1 übersetzt, echt mit Paper 26.1.2 (`test/run.sh`,
+  Rechner knapp: `COPIES=1 XMX=1100M`) **232/232**, Log ohne Fehler – alle bisherigen Prüfungen und je Kampfart ein
+  Kampf bis zum Sieg, Sumo-Absturz, Spleef-Sturz, Labyrinth-Ziel (Hecken, gleich weite Ecken, neuer Irrgarten in der
+  nächsten Runde), Brücke-Tor, Bester aus 3, Kampfart aus, Party gegen Party, Jeder gegen jeden, Zwei Teams. Gefunden
+  und behoben: im UHC, Bau-Kampf und auf der Brücke ließ sich kein Block setzen (`GuardListener` verweigerte den
+  Rechtsklick auf Blöcke ganz). Bilder mit echtem Client 26.3 (Kampfmenü, Tooltips, Halle, alle vier neuen Arenen)
+  nur lokal; dabei bekam die Gruppe „Modern“ ein eigenes Symbol (Netherit-Schwert statt desselben Schilds wie die
+  Kampfart Modern).
 - Version 0.1.3 (16.11. veröffentlicht, `main` d1ef6c0, dazu JUnit 6.1.3): **Zurück ins Spiel** (Philip: „Wenn das
   Game crasht, soll man zurück zum Spiel können“ und vor der Lobby nachfragen, solange man spielt). Netzwerk-
   Schnittstelle 2 (Kopie byte-gleich): `playing` vom Countdown bis zum Ausscheiden bzw. Ende (`Connected` meldet nur
@@ -111,3 +119,5 @@ Party gegen Party und Jeder gegen jeden.
   `party.max-spieler` (2–8). Webseite/Statistik: Kampfarten und Werte `hits_boxen`, `goals_bruecke`,
   `goals_labyrinth`, `rounds_won`, `party_games`, `party_wins`.
 - Philip: Go für `main` mit 0.2.0 (mehr Kampfarten).
+- Nicht echt geprüft (0.2.0): Kämpfe mit echtem Client (Rückstoß im Sumo, Spleef, Bauen auf der Brücke, Weg durch
+  den Irrgarten), Bedrock-Spieler, Netzwerk mit echtem Hub; Gleichgewicht der Kits mit echten Spielern.
