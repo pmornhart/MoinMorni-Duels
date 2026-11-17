@@ -13,8 +13,9 @@
 #                 damit nichts heruntergeladen werden muss) – optional
 #   DUELS_NODE_MODULES  node_modules mit mineflayer
 #   EXTRA_PLUGINS weitere Jars für den Server (z. B. ViaVersion + ViaBackwards für Paper 26.3)
-#   XMX / COPIES  Arbeitsspeicher des Servers (Vorgabe 2G) und Kopien je Arena (Vorgabe 2) – wenig Speicher auf dem
-#                 Rechner: XMX=1300M COPIES=1 (der Test kommt mit einer Kopie aus)
+#   XMX / COPIES  Arbeitsspeicher des Servers (Vorgabe 2G; dazu XMS, JAVA_OPTS) und Kopien je Arena (Vorgabe 2) –
+#                 wenig Speicher auf dem Rechner: XMS=512M XMX=1G JAVA_OPTS=-XX:+UseSerialGC COPIES=1 (der Test kommt
+#                 mit einer Kopie aus)
 #
 # Paper 26.3 (wie im Netzwerk): mineflayer kann nur bis 26.1 und kommt über ViaBackwards hinein, darf sich dort aber
 # nicht bewegen (NO_MOVE=1 überspringt die Prüfungen, die laufen müssen):
@@ -116,7 +117,7 @@ done
 echo "== Server starten (Port $PORT, RCON $RCON_PORT)"
 cd "$SERVER"
 : > console.log
-"$JAVA" -Xms1G "-Xmx${XMX:-2G}" -jar paper.jar --nogui < /dev/null > console.log 2>&1 &
+"$JAVA" "-Xms${XMS:-1G}" "-Xmx${XMX:-2G}" ${JAVA_OPTS:-} -jar paper.jar --nogui < /dev/null > console.log 2>&1 &
 PID=$!
 stop_server() {
   if kill -0 "$PID" 2>/dev/null; then

@@ -97,7 +97,13 @@ public final class GuardListener implements Listener {
         if (e.getAction() == Action.PHYSICAL) {
             e.setCancelled(true);
         } else if (e.getAction() == Action.RIGHT_CLICK_BLOCK) {
-            e.setUseInteractedBlock(Event.Result.DENY);
+            // Türen, Truhen, Hebel … bleiben zu. Sonst nicht sperren: wer im Kampf bauen darf, setzt seine Blöcke über
+            // genau diesen Klick (ein gesperrter Block ließe auch das Setzen nicht zu; ob gebaut werden darf, prüft
+            // onPlace).
+            Block b = e.getClickedBlock();
+            if (b == null || b.getType().isInteractable() || !plugin.building().mayPlace(p, b.getRelative(e.getBlockFace()))) {
+                e.setUseInteractedBlock(Event.Result.DENY);
+            }
         }
     }
 

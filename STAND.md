@@ -18,15 +18,15 @@ Party gegen Party und Jeder gegen jeden.
   `Loadouts` (Ausrüstungen; Verzauberungen und Effekte als Namen, erst auf dem Server aufgelöst).
 - `match/`: `Elo`, `Matchmaker` (rein, mit Tests), `QueueKey`, `Queues` (Warteschlangen, Party).
 - `fight/`: `Fight` (Teams, Art: Warteschlange/Herausforderung/Party/Jeder gegen jeden, Runden, Pause), `Fights`
-  (Start, Countdown, Runden, Ausscheiden, Tore, Treffer, Ende, Wertung, Statistik), `Tally` (Runden, Treffer, Tore –
-  rein), `Zones` (Tore, Ziel im Irrgarten, Bauzonen, Sumo-Tiefe – rein), `Building` (was im Kampf gebaut und abgebaut werden darf),
-  `Abilities`, `PlayerState`.
+  (Start, Countdown, Runden, Ausscheiden, Tore, Ziel, Treffer, Ende, Wertung, Statistik), `Tally` (Runden, Treffer,
+  Tore – rein), `Zones` (Tore, Ziel im Irrgarten, Bauzonen, Sumo-Tiefe – rein), `Building` (was im Kampf gebaut und
+  abgebaut werden darf), `Abilities`, `PlayerState`.
 - `data/`: `KitStats`, `PlayerData` (YAML), `Store` (speichert im Hintergrund), `Leaderboard`, `DataMove` (holt den
   Datenordner aus 0.1.1 zurück).
 - `world/`: `VoidGenerator`, `Plan` (Bauplan), `Decor`, `HallPlan` (Turnierhof), `ArenaType` (8 Arenen),
   `ArenaPlans` (4 Arenen für alle), `SpecialArenas` (Tanzboden, Schneefeld, Irrgarten, Klammbrücke), `ArenaShape`
-  (Startplätze, Blick, Grenzen – rein), `Maze` (punktsymmetrischer Irrgarten – rein), `Arena`, `Arenas`, `Construction` (baut nur bei
-  neuer Bau-Version, Halle sofort, Arenen nach und nach), `BlockLog`.
+  (Startplätze, Blick, Grenzen – rein), `Maze` (drehsymmetrischer Irrgarten – rein), `Arena` (auch neuer Irrgarten je
+  Runde), `Arenas`, `Construction` (baut nur bei neuer Bau-Version, Halle sofort, Arenen nach und nach), `BlockLog`.
 - `hall/`: `Hall` (Knöpfe, Zustand), `HallBoards` (Schrift je Sprache, wechselt zwischen den Gruppen). `menu/`:
   `Menu`, `Menus` (Kampfmenü nach Gruppen, Kampfart-Menü, Herausforderung mit Arena und Runden), `KitEditor`.
 - `listen/`: `PlayerListener`, `CombatListener` (Regeln je Kampfart), `GuardListener` (Bauen, Wasser/Lava im UHC).
@@ -35,30 +35,31 @@ Party gegen Party und Jeder gegen jeden.
 
 ## Stand (16.11.2026)
 
-- Version 0.2.0 (Branch `claude/mehr-kits`, baut auf 0.1.3 auf, wartet auf Philips Go): **Viel mehr Kampfarten**.
-  20 Kampfarten in drei Gruppen – Klassisch (keine Abklingzeit): Klassisch, Nur Schwert, Ritter, Diamant, Bogen,
-  Angel, Kombo; Modern: Modern, Axt und Schild, Goldapfel, Tränke, Enderperlen, UHC, Bau-Kampf; Spaß: Fähigkeiten,
-  Sumo, Boxen, Spleef, Labyrinth, Brücke. Jede mit eigenem Bild, Warteschlangen (locker/gewertet, 1v1/2v2), Elo,
-  Rangliste und Statistik. Vier eigene Arenen (`SpecialArenas`, Bau-Version 2): Tanzboden (Sumo), Schneefeld (Spleef),
-  Irrgarten (Labyrinth, eigener Heckenplan aus `Maze`), Klammbrücke (Brücke mit Toren). Regeln: Sumo ohne Schaden,
-  Herunterfallen = raus (Kill für den letzten Stoß); Boxen zählt Treffer bis `boxen.treffer`; Spleef: nur der
-  Schneeboden ist abbaubar, Schläge zählen nicht; Labyrinth: jede Runde ein neuer Irrgarten (`Maze` punktsymmetrisch –
-  beide Startecken gleich weit vom Ziel, `Arena.reshuffleMaze` setzt nur geänderte Blöcke), wer zuerst auf dem Ziel in
-  der Mitte steht (Gold/Smaragd mit Leuchtfeuer) oder alle Gegner besiegt, gewinnt die Runde, Kompass zum nächsten
-  Gegner; Brücke: Blöcke in
-  Teamfarbe, Tor = Punkt, Fallen/Besiegt = zurück an den Start; UHC/Bau-Kampf/Brücke: nur eigene Blöcke abbauen,
-  Wasser/Lava nur im UHC, danach wird die Arena zurückgesetzt. „Bester aus 1/3/5“ (Warteschlange je Kampfart in der
-  config.yml, Herausforderung frei wählbar), `/duel <spieler> [kampfart] [arena] [1|3|5]`, Party gegen Party (zwei
-  Party-Leitungen), in der eigenen Party Jeder gegen jeden oder Zwei Teams (`/partykampf … [teams]`, zufällig gleich
-  groß geteilt, auch Brücke), Kampfmenü nach Gruppen, Ranglisten in der Halle wechseln.
-  Neue config-Schlüssel: `kits.<kampfart>.an`, `kits.<kampfart>.runden`, `sumo.aus-tiefe`, `boxen.treffer`,
-  `bruecke.tore`, `kombo.treffer-pause-ticks`, `angel.zug`, `labyrinth.kompass`, `labyrinth.ziel`,
+- Version 0.2.0 (Branch `claude/mehr-kits`, baut auf 0.1.3 = `main` d1ef6c0 auf, wartet auf Philips Go): **Viel mehr
+  Kampfarten** (Philip: „mehr Kits, so wie auf den großen PvP-Servern – Maze, Only Sword und sowas alles“). 20 Kampfarten in
+  drei Gruppen – Klassisch (keine Abklingzeit): Klassisch, Nur Schwert, Ritter, Diamant, Bogen, Angel, Kombo; Modern:
+  Modern, Axt und Schild, Goldapfel, Tränke, Enderperlen, UHC, Bau-Kampf; Spaß: Fähigkeiten, Sumo, Boxen, Spleef,
+  Labyrinth, Brücke. Jede mit eigenem Symbol und kurzer Erklärung (de/en), Warteschlangen (locker/gewertet, 1v1/2v2),
+  Elo, Rangliste und Statistik; Kit-Editor nach Gruppen. Vier eigene Arenen (`SpecialArenas`, Bau-Version 2): Tanzboden
+  (Sumo), Schneefeld (Spleef), Irrgarten (Labyrinth), Klammbrücke (Brücke mit Toren). Regeln: Sumo ohne Schaden,
+  Herunterfallen = raus (Kill für den letzten Stoß); Boxen zählt Treffer bis `boxen.treffer`; Spleef: nur der Schneeboden
+  ist abbaubar, Schläge zählen nicht; Labyrinth: vor jeder Runde ein neuer Irrgarten (`Maze`, drehsymmetrisch – alle vier
+  Ecken gleich weit vom Ziel; `Arena.reshuffleMaze` setzt nur geänderte Blöcke), wer zuerst auf dem Ziel in der Mitte
+  steht (Gold/Smaragd mit Leuchtfeuer) oder alle Gegner besiegt, gewinnt die Runde – bis zu vier Seiten starten in den
+  Ecken, mit mehr zählt nur der Kampf; Kompass zum nächsten Gegner; Brücke: Blöcke in Teamfarbe, Tor = Punkt,
+  Fallen/Besiegt = zurück an den Start; UHC/Bau-Kampf/Brücke: nur eigene Blöcke abbauen, Wasser/Lava nur im UHC, danach
+  wird die Arena zurückgesetzt. „Bester aus 1/3/5“ (Warteschlange je Kampfart in der config.yml, Herausforderung frei
+  wählbar), `/duel <spieler> [kampfart] [arena] [1|3|5]`, Party gegen Party (zwei Party-Leitungen), in der eigenen Party
+  Jeder gegen jeden oder Zwei Teams (`/partykampf … [teams]`, zufällig gleich groß geteilt, auch Brücke), Kampfmenü nach
+  Gruppen, Ranglisten in der Halle wechseln. Behoben: Fehler im Protokoll beim Abschalten mitten im Kampf
+  (`HallBoards.show`). Neue config-Schlüssel: `kits.<kampfart>.an`, `kits.<kampfart>.runden`, `sumo.aus-tiefe`,
+  `boxen.treffer`, `bruecke.tore`, `kombo.treffer-pause-ticks`, `angel.zug`, `labyrinth.kompass`, `labyrinth.ziel`,
   `labyrinth.jede-runde-neu`, `party.max-spieler`. Neue Statistik-Werte: `hits_boxen`, `goals_bruecke`,
-  `goals_labyrinth`, `rounds_won`, `party_games`, `party_wins` (dazu `games_`/`wins_`/
-  `losses_`/`draws_`/`elo_<kampfart>` für alle 20). „Zurück ins Spiel“ (0.1.3) gilt in allen Kampfarten, auch zwischen
-  Runden und mit mehr als zwei Teams.
+  `goals_labyrinth`, `rounds_won`, `party_games`, `party_wins` (dazu `games_`/`wins_`/`losses_`/`draws_`/`elo_<kampfart>`
+  für alle 20). „Zurück ins Spiel“ (0.1.3) gilt in allen Kampfarten, auch zwischen Runden und mit mehr als zwei Teams.
+  `test/run.sh` mit `XMX`, `XMS`, `JAVA_OPTS`, `COPIES` für einen knappen Rechner.
   TESTZEILE
-- Version 0.1.3 (Branch `claude/zurueck-ins-spiel`, wartet auf Philips Go): **Zurück ins Spiel** (Philip: „Wenn das
+- Version 0.1.3 (16.11. veröffentlicht, `main` d1ef6c0, dazu JUnit 6.1.3): **Zurück ins Spiel** (Philip: „Wenn das
   Game crasht, soll man zurück zum Spiel können“ und vor der Lobby nachfragen, solange man spielt). Netzwerk-
   Schnittstelle 2 (Kopie byte-gleich): `playing` vom Countdown bis zum Ausscheiden bzw. Ende (`Connected` meldet nur
   Änderungen), das Bett ruft `askToLobby`, Verbindung mitten im Kampf weg → Platz `rueckkehr-sekunden` frei (oben in
@@ -100,8 +101,8 @@ Party gegen Party und Jeder gegen jeden.
 
 ## Offen
 
-- Philip: Go für `main` mit 0.1.3 (Zurück ins Spiel). Netzwerk-Repo: Einstellungs-Katalog um `rueckkehr-sekunden`
-  ergänzen (0–600, Vorgabe 30); Nachfrage vor der Lobby und „Zurück ins Spiel“ baut das Netzwerk-Plugin.
+- Netzwerk-Repo: Einstellungs-Katalog um `rueckkehr-sekunden` ergänzen (0–600, Vorgabe 30); Nachfrage vor der Lobby
+  und „Zurück ins Spiel“ baut das Netzwerk-Plugin.
 - Nicht echt geprüft: Rückkehr mit echtem Client über das echte Netzwerk (Lobby-Angebot), Bedrock.
 - Einstellungen (Zeitlimit, Elo, Arenen …) im Panel des Netzwerks (Einstellungs-Katalog) – gehört ins Netzwerk-Repo;
   neu seit 0.2.0: `kits.<kampfart>.an` (20 Schalter), `kits.<kampfart>.runden` (1/3/5, nicht bei `bruecke`),
@@ -109,4 +110,4 @@ Party gegen Party und Jeder gegen jeden.
   `angel.zug` (0–3), `labyrinth.kompass`, `labyrinth.ziel`, `labyrinth.jede-runde-neu` (je an/aus, Vorgabe an),
   `party.max-spieler` (2–8). Webseite/Statistik: Kampfarten und Werte `hits_boxen`, `goals_bruecke`,
   `goals_labyrinth`, `rounds_won`, `party_games`, `party_wins`.
-- Philip: Go für `main` mit 0.2.0 (mehr Kampfarten) – nach 0.1.3.
+- Philip: Go für `main` mit 0.2.0 (mehr Kampfarten).
