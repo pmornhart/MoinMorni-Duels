@@ -13,6 +13,9 @@
 #                 damit nichts heruntergeladen werden muss) – optional
 #   DUELS_NODE_MODULES  node_modules mit mineflayer
 #   EXTRA_PLUGINS weitere Jars für den Server (z. B. ViaVersion + ViaBackwards für Paper 26.3)
+#   XMX / COPIES  Arbeitsspeicher des Servers (Vorgabe 2G; dazu XMS, JAVA_OPTS) und Kopien je Arena (Vorgabe 2) –
+#                 wenig Speicher auf dem Rechner: XMS=512M XMX=1G JAVA_OPTS=-XX:+UseSerialGC COPIES=1 (der Test kommt
+#                 mit einer Kopie aus)
 #
 # Paper 26.3 (wie im Netzwerk): mineflayer kann nur bis 26.1 und kommt über ViaBackwards hinein, darf sich dort aber
 # nicht bewegen (NO_MOVE=1 überspringt die Prüfungen, die laufen müssen):
@@ -70,12 +73,12 @@ enforce-whitelist=false
 motd=MoinMorni Duels Test
 allow-flight=true
 EOF
-# Testwerte: kurzes Zeitlimit (Unentschieden prüfen), kurzes Nachspiel, kurze Herausforderung, 2 Kopien je Arena,
-# Platz nach Verbindungsabbruch 12 Sekunden frei.
-cat > "$SERVER/plugins/MoinMorniDuels/config.yml" <<'EOF'
+# Testwerte: kurzes Zeitlimit (Unentschieden prüfen), kurzes Nachspiel, kurze Herausforderung, 2 Kopien je Arena (COPIES),
+# Platz nach Verbindungsabbruch 12 Sekunden frei, Boxen bis 10 Treffer, Brücke bis 2 Tore.
+cat > "$SERVER/plugins/MoinMorniDuels/config.yml" <<EOF
 rueckkehr-sekunden: 12
 welt: duels
-arena-kopien: 2
+arena-kopien: ${COPIES:-2}
 kampf:
   zeitlimit-sekunden: 40
   countdown-sekunden: 3
@@ -91,6 +94,10 @@ wertung:
   spanne-max: 1000
 suppe:
   heilung: 7.0
+boxen:
+  treffer: 10
+bruecke:
+  tore: 2
 EOF
 # Test-Netzwerk: Bert spricht Englisch, Anna und Bert sind eine Party (Anna führt).
 cat > "$SERVER/plugins/MoinMorni/fake.properties" <<'EOF'
@@ -110,7 +117,7 @@ done
 echo "== Server starten (Port $PORT, RCON $RCON_PORT)"
 cd "$SERVER"
 : > console.log
-"$JAVA" -Xms1G -Xmx2G -jar paper.jar --nogui < /dev/null > console.log 2>&1 &
+"$JAVA" "-Xms${XMS:-1G}" "-Xmx${XMX:-2G}" ${JAVA_OPTS:-} -jar paper.jar --nogui < /dev/null > console.log 2>&1 &
 PID=$!
 stop_server() {
   if kill -0 "$PID" 2>/dev/null; then
@@ -123,7 +130,7 @@ if [ "${KEEP:-0}" != "1" ]; then
   trap stop_server EXIT
 fi
 
-for _ in $(seq 1 240); do
+for _ in $(seq 1 "${READY_WAIT:-600}"); do
   if grep -q "Duels ist bereit" console.log; then break; fi
   if ! kill -0 "$PID" 2>/dev/null; then echo "Server ist abgestürzt:"; tail -40 console.log; exit 1; fi
   sleep 1

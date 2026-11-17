@@ -37,6 +37,8 @@ public final class Hall {
     private static final int SLOT_STATS = 7;
     private static final int SLOT_LOBBY = 8;
     private static final double DEFAULT_ATTACK_SPEED = 4.0;
+    /** Wie lange man nach einem Treffer unverwundbar ist (Minecraft-Standard; die Kampfart Kombo setzt es kürzer). */
+    private static final int DEFAULT_NO_DAMAGE_TICKS = 20;
 
     private final DuelsPlugin plugin;
     private final World world;
@@ -83,6 +85,7 @@ public final class Hall {
             p.removePotionEffect(e.getType());
         }
         attackSpeed(p, DEFAULT_ATTACK_SPEED);
+        p.setMaximumNoDamageTicks(DEFAULT_NO_DAMAGE_TICKS);
         AttributeInstance max = p.getAttribute(Attribute.MAX_HEALTH);
         p.setHealth(max == null ? 20.0 : max.getValue());
         p.setFoodLevel(20);

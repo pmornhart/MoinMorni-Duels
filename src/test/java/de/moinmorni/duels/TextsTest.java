@@ -96,6 +96,25 @@ class TextsTest {
     }
 
     @Test
+    void everyKitArenaAndGroupHasANameInBothLanguages() {
+        for (de.moinmorni.duels.kit.Kit k : de.moinmorni.duels.kit.Kit.values()) {
+            for (String key : new String[] {"kit." + k.id(), "kit." + k.id() + ".desc"}) {
+                assertNotEquals(key, Texts.raw("de", key), "fehlt: " + key);
+            }
+        }
+        for (de.moinmorni.duels.world.ArenaType t : de.moinmorni.duels.world.ArenaType.values()) {
+            assertNotEquals(t.textKey(), Texts.raw("en", t.textKey()), "fehlt: " + t.textKey());
+        }
+        for (de.moinmorni.duels.kit.Kit.Group g : de.moinmorni.duels.kit.Kit.Group.values()) {
+            assertNotEquals("group." + g.id(), Texts.raw("de", "group." + g.id()));
+            assertNotEquals("group." + g.id() + ".desc", Texts.raw("de", "group." + g.id() + ".desc"));
+        }
+        for (String special : new String[] {"sumo", "boxen", "spleef", "labyrinth", "bruecke", "uhc"}) {
+            assertNotEquals("hint." + special, Texts.raw("de", "hint." + special), "Hinweis fehlt: " + special);
+        }
+    }
+
+    @Test
     void numbersUseTheRightDecimalMark() {
         assertEquals("3,5", Ui.hearts(7.0, "de"));
         assertEquals("3.5", Ui.hearts(7.0, "en"));

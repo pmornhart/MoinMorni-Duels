@@ -5,6 +5,7 @@ import de.moinmorni.duels.data.Leaderboard;
 import de.moinmorni.duels.data.PlayerData;
 import de.moinmorni.duels.data.Store;
 import de.moinmorni.duels.fight.Abilities;
+import de.moinmorni.duels.fight.Building;
 import de.moinmorni.duels.fight.Fights;
 import de.moinmorni.duels.hall.Hall;
 import de.moinmorni.duels.hall.HallBoards;
@@ -50,9 +51,12 @@ public final class DuelsPlugin extends JavaPlugin {
     private static final long LANGUAGE_CHECK = 40L;
     private static final long COOLDOWN_BAR = 4L;
     private static final long BOARD_UPDATE = 20L * 30;
+    /** Die Ranglisten-Schilder wechseln so oft zur nächsten Kampfart ihrer Gruppe. */
+    private static final long BOARD_ROTATE = 20L * 8;
     private static final long STATE_REFRESH = 20L * 60;
 
     private Settings settings;
+    private KitSettings kitSettings;
     private Network net;
     private Store store;
     private Leaderboard board;
@@ -64,7 +68,9 @@ public final class DuelsPlugin extends JavaPlugin {
     private Queues queues;
     private Fights fights;
     private Challenges challenges;
+    private PartyFights partyFights;
     private Abilities abilities;
+    private Building building;
     private Menus menus;
     private volatile boolean ready;
     private boolean stateQueued;
@@ -93,6 +99,7 @@ public final class DuelsPlugin extends JavaPlugin {
         }
         saveDefaultConfig();
         settings = Settings.load(getConfig());
+        kitSettings = KitSettings.load(getConfig());
         Items.init(this);
         net = Network.connect(this);
         getLogger().info(net.connected()
@@ -108,7 +115,9 @@ public final class DuelsPlugin extends JavaPlugin {
         fights = new Fights(this);
         queues = new Queues(this);
         challenges = new Challenges(this);
+        partyFights = new PartyFights(this);
         abilities = new Abilities(this);
+        building = new Building(this);
         menus = new Menus(this);
 
         getServer().getPluginManager().registerEvents(menus, this);
@@ -116,7 +125,8 @@ public final class DuelsPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new CombatListener(this), this);
         getServer().getPluginManager().registerEvents(new GuardListener(this), this);
         Commands commands = new Commands(this);
-        for (String name : List.of("duel", "spectate", "verlassen", "stats", "top", "kit", "warteschlange", "duels")) {
+        for (String name : List.of("duel", "spectate", "verlassen", "stats", "top", "kit", "warteschlange", "partykampf",
+                "duels")) {
             PluginCommand c = getCommand(name);
             if (c != null) {
                 c.setExecutor(commands);
@@ -142,6 +152,7 @@ public final class DuelsPlugin extends JavaPlugin {
                 LANGUAGE_CHECK, LANGUAGE_CHECK);
         scheduler.runTaskTimer(this, abilities::showCooldowns, COOLDOWN_BAR, COOLDOWN_BAR);
         scheduler.runTaskTimer(this, boards::update, BOARD_UPDATE, BOARD_UPDATE);
+        scheduler.runTaskTimer(this, boards::rotate, BOARD_ROTATE, BOARD_ROTATE);
         scheduler.runTaskTimer(this, () -> reportState(true), STATE_REFRESH, STATE_REFRESH);
 
         // Nach einem Neuladen: wer schon da ist, kommt in die Halle.
@@ -218,6 +229,11 @@ public final class DuelsPlugin extends JavaPlugin {
         return settings;
     }
 
+    /** Kampfarten an/aus, Runden und die Werte der besonderen Kampfarten (config.yml). */
+    public KitSettings kitSettings() {
+        return kitSettings;
+    }
+
     public Network net() {
         return net;
     }
@@ -256,6 +272,14 @@ public final class DuelsPlugin extends JavaPlugin {
 
     public Challenges challenges() {
         return challenges;
+    }
+
+    public PartyFights partyFights() {
+        return partyFights;
+    }
+
+    public Building building() {
+        return building;
     }
 
     public Abilities abilities() {
@@ -327,10 +351,11 @@ public final class DuelsPlugin extends JavaPlugin {
         }
     }
 
-    /** /duels neuladen: Zeiten, Wertung und Suppe neu aus der config.yml. */
+    /** /duels neuladen: Zeiten, Wertung, Suppe, Rückkehr und die Kampfarten neu aus der config.yml. */
     void reloadSettings() {
         reloadConfig();
         settings = Settings.load(getConfig());
+        kitSettings = KitSettings.load(getConfig());
         queues.reload(settings);
     }
 }

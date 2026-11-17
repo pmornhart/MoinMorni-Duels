@@ -10,6 +10,7 @@ import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.minimessage.tag.Tag;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 
 /**
  * Alle Texte für Spieler, auf Deutsch und Englisch, als MiniMessage. Eigene Farben: {@code <em>} Smaragd,
@@ -78,8 +79,68 @@ public final class Texts {
                 "<gray>Iron, a diamond sword and mushroom soup.</gray>\n<gray>No cooldown – soup heals 3.5 ❤ at once.</gray>");
         t("kit.modern.desc", "<gray>Heutiger Kampf: Schild, Axt, Bogen,</gray>\n<gray>Goldäpfel und Enderperlen.</gray>",
                 "<gray>Today's combat: shield, axe, bow,</gray>\n<gray>golden apples and ender pearls.</gray>");
-        t("kit.faehigkeiten.desc", "<gray>Eisen und eine besondere Fähigkeit</gray>\n<gray>mit Abklingzeit. Klicken: Fähigkeit wählen.</gray>",
-                "<gray>Iron and a special ability</gray>\n<gray>with a cooldown. Click: choose your ability.</gray>");
+        t("kit.faehigkeiten.desc", "<gray>Eisen und eine besondere Fähigkeit</gray>\n<gray>mit Abklingzeit – im Menü wählbar.</gray>",
+                "<gray>Iron and a special ability</gray>\n<gray>with a cooldown – pick it in the menu.</gray>");
+        t("kit.schwert", "Nur Schwert", "Sword Only");
+        t("kit.schwert.desc", "<gray>Nur ein Diamantschwert – keine Rüstung,</gray>\n<gray>nichts zu essen. Wer besser trifft, gewinnt.</gray>",
+                "<gray>Just a diamond sword – no armour,</gray>\n<gray>no food. Whoever hits better wins.</gray>");
+        t("kit.ritter", "Ritter", "Knight");
+        t("kit.ritter.desc", "<gray>Komplett aus Eisen: Rüstung, Schwert,</gray>\n<gray>dazu Bogen und zwei Goldäpfel.</gray>",
+                "<gray>All iron: armour and sword,</gray>\n<gray>plus a bow and two golden apples.</gray>");
+        t("kit.diamant", "Diamant", "Diamond");
+        t("kit.diamant.desc", "<gray>Komplett aus Diamant, leicht verzaubert,</gray>\n<gray>dazu Bogen und Goldäpfel.</gray>",
+                "<gray>All diamond, lightly enchanted,</gray>\n<gray>plus a bow and golden apples.</gray>");
+        t("kit.bogen", "Bogen", "Archery");
+        t("kit.bogen.desc", "<gray>Bogen mit unendlich Pfeilen und leichte</gray>\n<gray>Lederrüstung – gut zielen, in Deckung gehen.</gray>",
+                "<gray>A bow with endless arrows and light</gray>\n<gray>leather armour – aim well, take cover.</gray>");
+        t("kit.angel", "Angel", "Fishing Rod");
+        t("kit.angel.desc", "<gray>Schwert und Angel: der Haken stupst an,</gray>\n<gray>beim Einholen holst du den Gegner heran.</gray>",
+                "<gray>Sword and rod: the hook gives a nudge,</gray>\n<gray>reeling in pulls your opponent closer.</gray>");
+        t("kit.kombo", "Kombo", "Combo");
+        t("kit.kombo.desc", "<gray>Fast keine Pause zwischen Treffern –</gray>\n<gray>schnelle Schlagfolgen, starke Rüstung.</gray>",
+                "<gray>Hardly any pause between hits –</gray>\n<gray>quick combos, strong armour.</gray>");
+        t("kit.axt", "Axt und Schild", "Axe & Shield");
+        t("kit.axt.desc", "<gray>Diamantaxt und Schild, Kampf wie heute:</gray>\n<gray>Axt-Treffer legen den Schild kurz lahm.</gray>",
+                "<gray>Diamond axe and shield, today's combat:</gray>\n<gray>axe hits disable the shield for a moment.</gray>");
+        t("kit.goldapfel", "Goldapfel", "Golden Apple");
+        t("kit.goldapfel.desc", "<gray>Verzauberte Goldäpfel, sehr starke Rüstung</gray>\n<gray>und Tränke für Stärke und Tempo.</gray>",
+                "<gray>Enchanted golden apples, very strong armour</gray>\n<gray>and potions for strength and speed.</gray>");
+        t("kit.traenke", "Tränke", "Potions");
+        t("kit.traenke.desc", "<gray>Heiltränke zum Werfen, Schnelligkeit</gray>\n<gray>zum Trinken und ein paar Enderperlen.</gray>",
+                "<gray>Healing potions to throw, speed to drink</gray>\n<gray>and a few ender pearls.</gray>");
+        t("kit.perlen", "Enderperlen", "Ender Pearls");
+        t("kit.perlen.desc", "<gray>16 Enderperlen – das Landen tut nicht weh.</gray>\n<gray>Springen, überraschen, zuschlagen.</gray>",
+                "<gray>16 ender pearls – landing doesn't hurt.</gray>\n<gray>Jump, surprise, strike.</gray>");
+        t("kit.uhc", "UHC", "UHC");
+        t("kit.uhc.desc", "<gray>Keine natürliche Heilung – nur Goldäpfel.</gray>\n<gray>Lava, Wasser, Blöcke und Bogen.</gray>",
+                "<gray>No natural healing – only golden apples.</gray>\n<gray>Lava, water, blocks and a bow.</gray>");
+        t("kit.baukampf", "Bau-Kampf", "Build Fight");
+        t("kit.baukampf.desc", "<gray>Blöcke bauen erlaubt: Türme, Wände,</gray>\n<gray>Brücken. Danach steht die Arena wie neu.</gray>",
+                "<gray>Building allowed: towers, walls,</gray>\n<gray>bridges. Afterwards the arena is like new.</gray>");
+        t("kit.sumo", "Sumo", "Sumo");
+        t("kit.sumo.desc", "<gray>Runder Tanzboden, kein Schaden:</gray>\n<gray>wer herunterfällt, verliert.</gray>",
+                "<gray>A round dance floor, no damage:</gray>\n<gray>whoever falls off loses.</gray>");
+        t("kit.boxen", "Boxen", "Boxing");
+        t("kit.boxen.desc", "<gray>Kein Schaden – Treffer zählen.</gray>\n<gray>Wer zuerst genug Treffer landet, gewinnt.</gray>",
+                "<gray>No damage – hits count.</gray>\n<gray>First to land enough hits wins.</gray>");
+        t("kit.spleef", "Spleef", "Spleef");
+        t("kit.spleef.desc", "<gray>Schaufel auf dem Schneefeld: schaufle</gray>\n<gray>den Boden unter dem Gegner weg!</gray>",
+                "<gray>A shovel on the snowfield: dig away</gray>\n<gray>the ground beneath your opponent!</gray>");
+        t("kit.labyrinth", "Labyrinth", "Maze");
+        t("kit.labyrinth.desc", "<gray>Jede Runde ein neuer Irrgarten: wer zuerst</gray>\n<gray>das Ziel in der Mitte erreicht, gewinnt.</gray>",
+                "<gray>A new hedge maze every round: the first</gray>\n<gray>to reach the goal in the middle wins.</gray>");
+        t("kit.bruecke", "Brücke", "Bridge");
+        t("kit.bruecke.desc", "<gray>Zwei Seiten, eine Brücke über die Klamm:</gray>\n<gray>spring ins gegnerische Tor und punkte!</gray>",
+                "<gray>Two sides, a bridge over the gorge:</gray>\n<gray>jump into the other goal to score!</gray>");
+        t("group.klassisch", "Klassisch", "Classic");
+        t("group.klassisch.desc", "<gray>Kampf wie früher: keine Abklingzeit</gray>\n<gray>beim Schlagen, Rückstoß wie damals.</gray>",
+                "<gray>Combat like back then: no cooldown</gray>\n<gray>when hitting, old-style knockback.</gray>");
+        t("group.modern", "Modern", "Modern");
+        t("group.modern.desc", "<gray>Kampf wie heute: mit Abklingzeit,</gray>\n<gray>Schild, Tränken und Blöcken.</gray>",
+                "<gray>Today's combat: with cooldown,</gray>\n<gray>shields, potions and blocks.</gray>");
+        t("group.spass", "Spaß", "Fun");
+        t("group.spass.desc", "<gray>Besondere Regeln und eigene Arenen:</gray>\n<gray>Tanzboden, Schneefeld, Irrgarten, Klamm.</gray>",
+                "<gray>Special rules and own arenas:</gray>\n<gray>dance floor, snowfield, maze, gorge.</gray>");
         t("mode.casual", "Locker", "Casual");
         t("mode.ranked", "Gewertet", "Ranked");
         t("size.1", "1 gegen 1", "1v1");
@@ -120,7 +181,6 @@ public final class Texts {
         t("menu.queue.click", "<em>▶ Klicken zum Anmelden</em>", "<em>▶ Click to join</em>");
         t("menu.queue.here", "<au>⏳ Du wartest hier – klicken zum Verlassen</au>", "<au>⏳ You are waiting here – click to leave</au>");
         t("menu.queue.party", "<gray>Party-Leiter: dein Mitspieler kommt mit.</gray>", "<gray>Party leader: your teammate comes along.</gray>");
-        t("menu.kit.ability", "<gray>Gewählt: <au><name></au> – klicken zum Wechseln</gray>", "<gray>Chosen: <au><name></au> – click to change</gray>");
         t("menu.close", "<red>Schließen</red>", "<red>Close</red>");
         t("menu.back", "<gray>← Zurück</gray>", "<gray>← Back</gray>");
         t("menu.ability.title", "Fähigkeit wählen", "Choose your ability");
@@ -158,6 +218,50 @@ public final class Texts {
         t("stats.top.empty", "<gray>Noch niemand gewertet – sei die oder der Erste!</gray>", "<gray>Nobody ranked yet – be the first!</gray>");
         t("menu.duel.title", "Herausfordern: <name>", "Challenge: <name>");
         t("menu.duel.click", "<em>▶ Klicken zum Herausfordern</em>", "<em>▶ Click to challenge</em>");
+        t("menu.duel.info", "<au><name></au> <gray>herausfordern</gray>", "<gray>Challenge</gray> <au><name></au>");
+        t("menu.duel.info.lore", "<gray>Erst Arena und Runden wählen (unten),</gray>\n<gray>dann auf eine Kampfart klicken.</gray>\n<gray>Seid ihr beide Party-Leitung, kämpfen</gray>\n<gray>eure ganzen Partys gegeneinander.</gray>",
+                "<gray>Pick arena and rounds first (below),</gray>\n<gray>then click a mode.</gray>\n<gray>If you both lead a party, your whole</gray>\n<gray>parties fight each other.</gray>");
+        t("menu.option.arena", "<au>Arena:</au> <white><arena></white>", "<au>Arena:</au> <white><arena></white>");
+        t("menu.option.arena.lore", "<gray>Klicken: nächste Arena.</gray>\n<gray>Sumo, Spleef, Labyrinth und Brücke</gray>\n<gray>haben immer ihre eigene Arena.</gray>",
+                "<gray>Click: next arena.</gray>\n<gray>Sumo, Spleef, Maze and Bridge</gray>\n<gray>always use their own arena.</gray>");
+        t("menu.option.rounds", "<au>Runden:</au> <white><rounds></white>", "<au>Rounds:</au> <white><rounds></white>");
+        t("menu.option.rounds.lore", "<gray>Klicken: 1, 3 oder 5 Runden.</gray>\n<gray>Bester aus 3: wer zuerst 2 gewinnt.</gray>\n<gray>Die Brücke zählt Tore statt Runden.</gray>",
+                "<gray>Click: 1, 3 or 5 rounds.</gray>\n<gray>Best of 3: first to win 2.</gray>\n<gray>Bridge counts goals instead of rounds.</gray>");
+        t("arena.random", "Zufall", "Random");
+        t("rounds.1", "eine Runde", "one round");
+        t("rounds.n", "Bester aus <n>", "Best of <n>");
+        t("menu.kit.title", "<kit> – Kampf wählen", "<kit> – choose a fight");
+        t("menu.kit.open", "<em>▶ Klicken: Gegner suchen</em>", "<em>▶ Click: find an opponent</em>");
+        t("menu.kit.counts", "<gray>Wartend: <white><waiting></white> · Im Kampf: <white><fighting></white></gray>",
+                "<gray>Waiting: <white><waiting></white> · Fighting: <white><fighting></white></gray>");
+        t("menu.kit.here", "<au>⏳ Du wartest hier</au>", "<au>⏳ You are waiting here</au>");
+        t("menu.kit.arena", "<gray>Eigene Arena: <em><arena></em></gray>", "<gray>Own arena: <em><arena></em></gray>");
+        t("menu.kit.rounds", "<gray>Warteschlange: <white><rounds></white></gray>", "<gray>Queue: <white><rounds></white></gray>");
+        t("menu.kit.editor", "<au>⚒ Kit anordnen</au>", "<au>⚒ Arrange this kit</au>");
+        t("menu.kit.top", "<au>★ Rangliste</au> <dark_gray>·</dark_gray> <white><kit></white>", "<au>★ Leaderboard</au> <dark_gray>·</dark_gray> <white><kit></white>");
+        t("menu.kit.ability", "<au>✦ Fähigkeit:</au> <white><name></white>", "<au>✦ Ability:</au> <white><name></white>");
+        t("menu.kit.ability.lore", "<gray>Klicken: Fähigkeit wechseln.</gray>", "<gray>Click: change your ability.</gray>");
+        t("menu.group.lore", "<gray>Darunter die Kampfarten dieser Gruppe.</gray>", "<gray>The modes of this group are in this row.</gray>");
+        t("menu.party.own", "<au>✦ Party-Kampf: Jeder gegen jeden oder Teams</au>", "<au>✦ Party fight: free-for-all or teams</au>");
+        t("menu.party.own.lore", "<gray>Für die Party-Leitung: alle aus deiner</gray>\n<gray>Party kämpfen gegeneinander – jeder für</gray>\n<gray>sich oder in zwei zufälligen Teams.</gray>\n<gray>Klicken: Kampfart wählen.</gray>",
+                "<gray>For party leaders: everyone in your</gray>\n<gray>party fights each other – everyone for</gray>\n<gray>themselves or in two random teams.</gray>\n<gray>Click: choose a mode.</gray>");
+        t("menu.party.ffa", "<au>✦ Party: Jeder gegen jeden</au>", "<au>✦ Party: free-for-all</au>");
+        t("menu.party.ffa.lore", "<gray>Für die Party-Leitung: alle aus deiner</gray>\n<gray>Party kämpfen gegeneinander, bis einer</gray>\n<gray>übrig ist. Klicken: Kampfart wählen.</gray>",
+                "<gray>For party leaders: everyone in your</gray>\n<gray>party fights each other until one is</gray>\n<gray>left. Click: choose a mode.</gray>");
+        t("menu.party.vs", "<au>⚔ Party gegen Party</au>", "<au>⚔ Party vs party</au>");
+        t("menu.party.vs.lore", "<gray>Fordere die Leitung einer anderen Party</gray>\n<gray>heraus (<white>/duel name</white> oder Rechtsklick).</gray>\n<gray>Seid ihr beide Party-Leitung, kämpfen</gray>\n<gray>eure Partys gegeneinander.</gray>",
+                "<gray>Challenge the leader of another party</gray>\n<gray>(<white>/duel name</white> or right-click).</gray>\n<gray>If you both lead a party, your parties</gray>\n<gray>fight each other.</gray>");
+        t("menu.ffa.title", "Party-Kampf in deiner Party", "Fight within your party");
+        t("menu.party.split", "<au>⚑ Party: Zwei Teams</au>", "<au>⚑ Party: two teams</au>");
+        t("menu.party.split.lore", "<gray>Für die Party-Leitung: deine Party wird</gray>\n<gray>zufällig in zwei Teams geteilt, die</gray>\n<gray>gegeneinander kämpfen (auch Brücke).</gray>",
+                "<gray>For party leaders: your party is split</gray>\n<gray>into two random teams that fight each</gray>\n<gray>other (Bridge works too).</gray>");
+        t("menu.option.party", "<au>Spielweise:</au> <white><mode></white>", "<au>Mode:</au> <white><mode></white>");
+        t("menu.option.party.lore", "<gray>Klicken: Jeder gegen jeden oder</gray>\n<gray>zwei zufällige Teams.</gray>",
+                "<gray>Click: free-for-all or</gray>\n<gray>two random teams.</gray>");
+        t("party.mode.ffa", "Jeder gegen jeden", "free-for-all");
+        t("party.mode.split", "Zwei Teams", "two teams");
+        t("menu.ffa.click", "<em>▶ Klicken: Party-Kampf starten</em>", "<em>▶ Click: start the party fight</em>");
+        t("menu.stats.kit.top", "<au>Rangliste:</au>", "<au>Leaderboard:</au>");
         t("menu.challenge.title", "Duell von <name>", "Duel from <name>");
         t("menu.challenge.accept", "<em>✔ Annehmen</em>", "<em>✔ Accept</em>");
         t("menu.challenge.deny", "<red>✖ Ablehnen</red>", "<red>✖ Decline</red>");
@@ -181,8 +285,9 @@ public final class Texts {
                 "<gray>For 2v2 your party may have at most 2 people – challenge each other with <white>/duel</white>!</gray>");
         t("queue.party.away", "<gray><white><name></white> aus deiner Party ist nicht im Turnierhof.</gray>", "<gray><white><name></white> from your party isn't in the court.</gray>");
         t("queue.party.busy", "<gray><white><name></white> aus deiner Party ist gerade beschäftigt.</gray>", "<gray><white><name></white> from your party is busy right now.</gray>");
-        t("queue.usage", "<gray>So geht's: <white>/warteschlange \\<klassisch|modern|fähigkeiten> \\<locker|gewertet> \\<1v1|2v2></white></gray>",
-                "<gray>Usage: <white>/queue \\<classic|modern|abilities> \\<casual|ranked> \\<1v1|2v2></white></gray>");
+        t("queue.usage", "<gray>So geht's: <white>/warteschlange \\<kampfart> \\<locker|gewertet> \\<1v1|2v2></white> – z. B. <white>/warteschlange sumo locker 1v1</white></gray>",
+                "<gray>Usage: <white>/queue \\<mode> \\<casual|ranked> \\<1v1|2v2></white> – e.g. <white>/queue sumo casual 1v1</white></gray>");
+        t("kit.off", "<gray>Diese Kampfart ist gerade ausgeschaltet.</gray>", "<gray>This mode is switched off right now.</gray>");
 
         // ---------- Kampf ----------
         t("fight.found", "<gray>Gegner gefunden: <white><names></white> · Arena <em><arena></em>.</gray>", "<gray>Opponent found: <white><names></white> · arena <em><arena></em>.</gray>");
@@ -216,6 +321,97 @@ public final class Texts {
         t("fight.nothing", "<gray>Du bist gerade in keinem Kampf und in keiner Warteschlange.</gray>", "<gray>You are not in a fight or a queue right now.</gray>");
         t("fight.back-hall", "<gray>Zurück in der Wartehalle.</gray>", "<gray>Back in the waiting hall.</gray>");
 
+        // ---------- Runden und besondere Kampfarten ----------
+        t("fight.countdown.round", "<gray><kit> · Runde <white><round></white> · gegen <white><names></white></gray>",
+                "<gray><kit> · round <white><round></white> · against <white><names></white></gray>");
+        t("fight.bossbar.score", "<white><kit></white> <dark_gray>·</dark_gray> <em><arena></em> <dark_gray>·</dark_gray> <bl><score></bl> <dark_gray>·</dark_gray> <au><time></au>",
+                "<white><kit></white> <dark_gray>·</dark_gray> <em><arena></em> <dark_gray>·</dark_gray> <bl><score></bl> <dark_gray>·</dark_gray> <au><time></au>");
+        t("fight.bestof", "<gray>Bester aus <white><n></white>: wer zuerst <white><wins></white> Runden gewinnt, gewinnt den Kampf.</gray>",
+                "<gray>Best of <white><n></white>: the first to win <white><wins></white> rounds wins the fight.</gray>");
+        t("fight.round.won", "<gray>Runde <white><round></white> an</gray> <white><names></white> <dark_gray>–</dark_gray> <gray>Stand <au><score></au>.</gray>",
+                "<gray>Round <white><round></white> goes to</gray> <white><names></white> <dark_gray>–</dark_gray> <gray>score <au><score></au>.</gray>");
+        t("fight.round.draw", "<gray>Runde <white><round></white> ohne Sieger – Stand <au><score></au>.</gray>",
+                "<gray>Round <white><round></white> has no winner – score <au><score></au>.</gray>");
+        t("fight.round.win.title", "<au>Runde gewonnen!</au>", "<au>Round won!</au>");
+        t("fight.round.lose.title", "<red>Runde verloren</red>", "<red>Round lost</red>");
+        t("fight.round.draw.title", "<bl>Runde ohne Sieger</bl>", "<bl>No winner this round</bl>");
+        t("fight.round.sub", "<gray>Stand <au><score></au> – gleich geht es weiter</gray>", "<gray>Score <au><score></au> – next round soon</gray>");
+        t("fight.result.rounds", "<gray>Endstand nach Runden: <au><score></au></gray>", "<gray>Final score in rounds: <au><score></au></gray>");
+        t("fight.void.sumo", "<white><victim></white> <gray>ist vom Tanzboden gefallen.</gray>", "<white><victim></white> <gray>fell off the dance floor.</gray>");
+        t("fight.void.sumo.by", "<white><victim></white> <gray>wurde von</gray> <white><killer></white> <gray>vom Tanzboden gestoßen.</gray>",
+                "<white><victim></white> <gray>was pushed off the dance floor by</gray> <white><killer></white><gray>.</gray>");
+        t("fight.void.spleef", "<white><victim></white> <gray>ist durchs Schneefeld gebrochen.</gray>", "<white><victim></white> <gray>broke through the snowfield.</gray>");
+        t("score.round", "Runde <round> · <score>", "round <round> · <score>");
+        t("score.hits", "Treffer <score> · bis <target>", "hits <score> · first to <target>");
+        t("score.goals", "Tore <score> · bis <target>", "goals <score> · first to <target>");
+        t("boxen.bar", "<au>✊</au> <gray>Treffer:</gray> <em><own></em> <dark_gray>:</dark_gray> <red><other></red> <dark_gray>·</dark_gray> <gray>bis <white><target></white></gray>",
+                "<au>✊</au> <gray>Hits:</gray> <em><own></em> <dark_gray>:</dark_gray> <red><other></red> <dark_gray>·</dark_gray> <gray>first to <white><target></white></gray>");
+        t("boxen.reached", "<white><names></white> <gray>hat genug Treffer gelandet – Stand <au><score></au>.</gray>",
+                "<white><names></white> <gray>landed enough hits – score <au><score></au>.</gray>");
+        t("boxen.result", "<gray>Treffer zum Schluss: <au><score></au></gray>", "<gray>Hits at the end: <au><score></au></gray>");
+        t("bruecke.goal", "<au>⚑ Tor!</au> <white><name></white> <gray>punktet für <white><team></white> – Stand <au><score></au>.</gray>",
+                "<au>⚑ Goal!</au> <white><name></white> <gray>scores for <white><team></white> – score <au><score></au>.</gray>");
+        t("bruecke.goal.title", "<au>⚑ Tor!</au>", "<au>⚑ Goal!</au>");
+        t("bruecke.goal.sub", "<white><name></white> <dark_gray>·</dark_gray> <gray>Stand <au><score></au></gray>", "<white><name></white> <dark_gray>·</dark_gray> <gray>score <au><score></au></gray>");
+        t("bruecke.own-goal", "<white><victim></white> <gray>ist ins eigene Tor gesprungen – zurück an den Start.</gray>",
+                "<white><victim></white> <gray>jumped into their own goal – back to the start.</gray>");
+        t("bruecke.fell", "<white><victim></white> <gray>ist in die Klamm gestürzt.</gray>", "<white><victim></white> <gray>fell into the gorge.</gray>");
+        t("bruecke.fell.by", "<white><victim></white> <gray>wurde von</gray> <white><killer></white> <gray>in die Klamm gestoßen.</gray>",
+                "<white><victim></white> <gray>was knocked into the gorge by</gray> <white><killer></white><gray>.</gray>");
+        t("bruecke.back.title", "<red>Zurück an den Start</red>", "<red>Back to the start</red>");
+        t("bruecke.back.sub", "<gray>Frische Ausrüstung – weiter geht's!</gray>", "<gray>Fresh gear – carry on!</gray>");
+        t("bruecke.result", "<gray>Tore zum Schluss: <au><score></au></gray>", "<gray>Goals at the end: <au><score></au></gray>");
+        t("team.blau", "Blau", "Blue");
+        t("team.rot", "Rot", "Red");
+        t("item.compass", "<au>⌖ Kompass</au>", "<au>⌖ Compass</au>");
+        t("item.compass.lore", "<gray>Zeigt immer zum nächsten Gegner.</gray>", "<gray>Always points to the nearest opponent.</gray>");
+        t("hint.sumo", "<gray>Sumo: Stoß den Gegner vom Tanzboden – Treffer tun nicht weh.</gray>",
+                "<gray>Sumo: push your opponent off the dance floor – hits don't hurt.</gray>");
+        t("hint.boxen", "<gray>Boxen: Wer zuerst <white><hits></white> Treffer landet, gewinnt – Treffer tun nicht weh.</gray>",
+                "<gray>Boxing: the first to land <white><hits></white> hits wins – hits don't hurt.</gray>");
+        t("hint.spleef", "<gray>Spleef: Schaufle den Schnee unter dem Gegner weg – wer durchbricht, verliert.</gray>",
+                "<gray>Spleef: dig the snow away beneath your opponent – whoever breaks through loses.</gray>");
+        t("hint.labyrinth", "<gray>Labyrinth: Wer zuerst das <au>Ziel</au> in der Mitte erreicht (der Lichtstrahl zeigt die Richtung) – oder alle Gegner besiegt –, gewinnt. Der Kompass zeigt zum nächsten Gegner.</gray>",
+                "<gray>Maze: the first to reach the <au>goal</au> in the middle (the beam of light shows the way) – or to defeat every opponent – wins. The compass points to the nearest opponent.</gray>");
+        t("hint.labyrinth.kampf", "<gray>Labyrinth: Findet euch im Irrgarten und kämpft – wer übrig bleibt, gewinnt. Der Kompass zeigt zum nächsten Gegner.</gray>",
+                "<gray>Maze: find each other in the hedge maze and fight – the last one standing wins. The compass points to the nearest opponent.</gray>");
+        t("labyrinth.goal", "<au>⚑ Ziel!</au> <white><name></white> <gray>hat als Erstes die Mitte des Irrgartens erreicht.</gray>",
+                "<au>⚑ Goal!</au> <white><name></white> <gray>was first to reach the middle of the maze.</gray>");
+        t("labyrinth.goal.title", "<au>⚑ Am Ziel!</au>", "<au>⚑ Goal reached!</au>");
+        t("labyrinth.goal.lost", "<red>Zu spät!</red>", "<red>Too late!</red>");
+        t("labyrinth.goal.sub", "<white><name></white> <gray>war zuerst in der Mitte</gray>", "<white><name></white> <gray>reached the middle first</gray>");
+        t("hint.bruecke", "<gray>Brücke: Spring ins Tor der anderen Seite! <white><goals></white> Tore gewinnen. Wer stürzt, kommt am Start wieder.</gray>",
+                "<gray>Bridge: jump into the other side's goal! <white><goals></white> goals win. Fall and you're back at the start.</gray>");
+        t("hint.uhc", "<gray>UHC: Keine natürliche Heilung – nur Goldäpfel heilen. Bauen, Wasser und Lava erlaubt.</gray>",
+                "<gray>UHC: no natural healing – only golden apples heal. Building, water and lava allowed.</gray>");
+        t("hint.baukampf", "<gray>Bau-Kampf: Bauen erlaubt – abbauen kannst du nur, was im Kampf gebaut wurde.</gray>",
+                "<gray>Build Fight: building allowed – you can only break blocks placed in this fight.</gray>");
+        t("hint.perlen", "<gray>Enderperlen: Das Landen tut nicht weh – überrasch deinen Gegner!</gray>",
+                "<gray>Ender Pearls: landing doesn't hurt – surprise your opponent!</gray>");
+        t("hint.kombo", "<gray>Kombo: Kaum Pause zwischen Treffern – bleib dran!</gray>",
+                "<gray>Combo: hardly any pause between hits – keep at it!</gray>");
+        t("hint.angel", "<gray>Angel: Der Haken stupst an, beim Einholen holst du den Gegner heran.</gray>",
+                "<gray>Fishing Rod: the hook gives a nudge, reeling in pulls your opponent closer.</gray>");
+
+        // ---------- Party ----------
+        t("party.none", "<gray>Dafür brauchst du eine Party mit mindestens zwei Leuten.</gray>",
+                "<gray>You need a party with at least two people for that.</gray>");
+        t("party.not-leader", "<gray>Das startet die Party-Leitung.</gray>", "<gray>Your party leader starts that.</gray>");
+        t("party.too-big", "<gray>Eure Party ist zu groß – höchstens <white><n></white> Leute.</gray>",
+                "<gray>Your party is too big – at most <white><n></white> people.</gray>");
+        t("party.away", "<gray><white><name></white> aus deiner Party ist nicht im Turnierhof.</gray>",
+                "<gray><white><name></white> from your party isn't in the court.</gray>");
+        t("party.busy", "<gray><white><name></white> aus deiner Party ist gerade beschäftigt.</gray>",
+                "<gray><white><name></white> from your party is busy right now.</gray>");
+        t("party.no-ffa", "<gray>Die Brücke braucht zwei Seiten – für „Jeder gegen jeden“ eine andere Kampfart wählen.</gray>",
+                "<gray>Bridge needs two sides – choose another mode for free-for-all.</gray>");
+        t("party.split.start", "<gray>Party-Kampf in zwei Teams: <white><kit></white> – <white><first></white> gegen <white><second></white>.</gray>",
+                "<gray>Party fight in two teams: <white><kit></white> – <white><first></white> vs <white><second></white>.</gray>");
+        t("party.ffa.start", "<gray>Party-Kampf „Jeder gegen jeden“: <white><kit></white> mit <white><names></white>.</gray>",
+                "<gray>Party free-for-all: <white><kit></white> with <white><names></white>.</gray>");
+        t("party.vs.missing", "<gray>Von der Party von <white><name></white> ist gerade niemand im Turnierhof.</gray>",
+                "<gray>Nobody from <white><name></white>'s party is in the court right now.</gray>");
+
         // ---------- Verbindung weg, wiederkommen ----------
         t("fight.away", "<white><victim></white> <gray>hat die Verbindung verloren – der Kampf ist angehalten. Wir warten bis zu <white><n></white> Sekunden.</gray>",
                 "<white><victim></white> <gray>lost the connection – the fight is paused. We'll wait up to <white><n></white> seconds.</gray>");
@@ -238,14 +434,18 @@ public final class Texts {
                 "<gray>Welcome back! Your fight is over by now – see <white>/stats</white> for the result.</gray>");
 
         // ---------- Herausforderung ----------
-        t("duel.usage", "<gray>So geht's: <white>/duel \\<spieler> [klassisch|modern|fähigkeiten]</white> · <white>/duel annehmen</white> · <white>/duel ablehnen</white></gray>",
-                "<gray>Usage: <white>/duel \\<player> [classic|modern|abilities]</white> · <white>/duel accept</white> · <white>/duel deny</white></gray>");
+        t("duel.usage", "<gray>So geht's: <white>/duel \\<spieler> [kampfart] [arena] [1|3|5]</white> · <white>/duel annehmen</white> · <white>/duel ablehnen</white></gray>",
+                "<gray>Usage: <white>/duel \\<player> [mode] [arena] [1|3|5]</white> · <white>/duel accept</white> · <white>/duel deny</white></gray>");
         t("duel.self", "<gray>Gegen dich selbst? Das wird schwierig.</gray>", "<gray>Against yourself? That'll be tricky.</gray>");
         t("duel.not-found", "<gray><white><name></white> ist gerade nicht im Turnierhof.</gray>", "<gray><white><name></white> isn't in the court right now.</gray>");
         t("duel.busy", "<gray><white><name></white> ist gerade beschäftigt.</gray>", "<gray><white><name></white> is busy right now.</gray>");
         t("duel.you-busy", "<gray>Du kämpfst gerade.</gray>", "<gray>You are in a fight.</gray>");
-        t("duel.unknown-kit", "<gray>Diese Kampfart gibt es nicht: <white>klassisch</white>, <white>modern</white> oder <white>fähigkeiten</white>.</gray>",
-                "<gray>Unknown mode – use <white>classic</white>, <white>modern</white> or <white>abilities</white>.</gray>");
+        t("duel.unknown-kit", "<gray>Diese Kampfart kenne ich nicht – alle stehen im Menü (Schwert), z. B. <white>klassisch</white>, <white>sumo</white> oder <white>bruecke</white>.</gray>",
+                "<gray>Unknown mode – all modes are in the menu (sword), e.g. <white>classic</white>, <white>sumo</white> or <white>bridge</white>.</gray>");
+        t("duel.unknown-arg", "<gray>Das verstehe ich nicht: <white><arg></white> – erlaubt sind eine Kampfart, eine Arena und 1, 3 oder 5 Runden.</gray>",
+                "<gray>I don't understand <white><arg></white> – allowed are a mode, an arena and 1, 3 or 5 rounds.</gray>");
+        t("duel.desc.bestof", "Bester aus <n>", "best of <n>");
+        t("duel.desc.party", "Party gegen Party", "party vs party");
         t("duel.sent", "<gray>Herausforderung an <white><name></white> geschickt (<em><kit></em>). Sie gilt <white><secs></white> Sekunden.</gray>",
                 "<gray>Challenge sent to <white><name></white> (<em><kit></em>). It is valid for <white><secs></white> seconds.</gray>");
         t("duel.received", "<white><name></white> <gray>fordert dich zum Duell heraus:</gray> <em><kit></em><gray>!</gray>",
@@ -289,7 +489,7 @@ public final class Texts {
         // ---------- Schilder in der Wartehalle ----------
         t("board.welcome", "<au><b>⚔ Turnierhof ⚔</b></au>\n<gray>Rechtsklick auf das <white>Schwert</white>: Kampf wählen</gray>\n<gray>Rechtsklick auf einen Spieler: herausfordern</gray>\n<gray>Amboss: Kit bearbeiten · Gold: Rangliste</gray>",
                 "<au><b>⚔ Tournament Court ⚔</b></au>\n<gray>Right-click the <white>sword</white>: choose a fight</gray>\n<gray>Right-click a player: challenge them</gray>\n<gray>Anvil: edit kit · Gold: leaderboard</gray>");
-        t("board.top", "<au><b>★ <kit></b></au>\n<gray>Rangliste · Top 5</gray>", "<au><b>★ <kit></b></au>\n<gray>Leaderboard · Top 5</gray>");
+        t("board.top", "<au><b>★ <kit></b></au>\n<gray><group> · Rangliste · Top 5</gray>", "<au><b>★ <kit></b></au>\n<gray><group> · Leaderboard · Top 5</gray>");
         t("board.top.line", "<au><pos>.</au> <white><name></white> <gray><elo></gray>", "<au><pos>.</au> <white><name></white> <gray><elo></gray>");
         t("board.top.empty", "<gray>Noch frei – sei die oder der Erste!</gray>", "<gray>Still empty – be the first!</gray>");
 
@@ -298,11 +498,25 @@ public final class Texts {
         t("arena.burghof", "Burghof", "Castle Courtyard");
         t("arena.bergwerk", "Bergwerk", "Old Mine");
         t("arena.wirtshausgarten", "Wirtshausgarten", "Beer Garden");
+        t("arena.tanzboden", "Tanzboden", "Dance Floor");
+        t("arena.schneefeld", "Schneefeld", "Snowfield");
+        t("arena.irrgarten", "Irrgarten", "Hedge Maze");
+        t("arena.klammbruecke", "Klammbrücke", "Gorge Bridge");
     }
 
     /** Alle Schlüssel (für Tests). */
     public static Set<String> keys() {
         return Collections.unmodifiableSet(TEXTS.keySet());
+    }
+
+    /** Gibt es diesen Text? */
+    public static boolean has(String key) {
+        return TEXTS.containsKey(key);
+    }
+
+    /** Text ohne Farben (z. B. als Teil eines anderen Textes, der ihn als Platzhalter bekommt). */
+    public static String plain(String lang, String key, TagResolver... resolvers) {
+        return PlainTextComponentSerializer.plainText().serialize(MM.deserialize(raw(lang, key), resolvers));
     }
 
     /** Roher MiniMessage-Text. Unbekannte Sprache → Deutsch. */

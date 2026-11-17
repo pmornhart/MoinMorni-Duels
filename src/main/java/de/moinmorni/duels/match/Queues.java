@@ -4,6 +4,8 @@ import de.moinmorni.duels.DuelsPlugin;
 import de.moinmorni.duels.Settings;
 import de.moinmorni.duels.Texts;
 import de.moinmorni.duels.Ui;
+import de.moinmorni.duels.fight.Fight;
+import de.moinmorni.duels.fight.Fights;
 import de.moinmorni.duels.net.Network;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -65,6 +67,10 @@ public final class Queues {
         }
         if (!plugin.hall().inHall(p)) {
             p.sendMessage(Texts.msg(lang, "queue.not-in-hall"));
+            return;
+        }
+        if (!plugin.kitSettings().on(key.kit())) {
+            p.sendMessage(Texts.msg(lang, "kit.off"));
             return;
         }
         if (key.size() == 1) {
@@ -188,10 +194,11 @@ public final class Queues {
         for (Map.Entry<QueueKey, List<Matchmaker.Entry>> e : waiting.entrySet()) {
             QueueKey key = e.getKey();
             List<Matchmaker.Entry> list = e.getValue();
-            // Wer nicht mehr in der Halle ist (oder weg), fliegt raus.
+            // Wer nicht mehr in der Halle ist (oder weg), fliegt raus – auch, wenn die Kampfart ausgeschaltet wurde.
+            boolean on = plugin.kitSettings().on(key.kit());
             for (Iterator<Matchmaker.Entry> it = list.iterator(); it.hasNext();) {
                 Matchmaker.Entry entry = it.next();
-                boolean ok = entry.members().stream().allMatch(m -> {
+                boolean ok = on && entry.members().stream().allMatch(m -> {
                     Player p = plugin.getServer().getPlayer(m);
                     return p != null && plugin.hall().inHall(p);
                 });
@@ -200,6 +207,11 @@ public final class Queues {
                     entry.members().forEach(m -> {
                         keyOf.remove(m);
                         entryOf.remove(m);
+                        Player p = plugin.getServer().getPlayer(m);
+                        if (!on && p != null && plugin.hall().inHall(p)) {
+                            p.sendMessage(Texts.msg(plugin.lang(p), "kit.off"));
+                            plugin.hall().items(p);
+                        }
                     });
                 }
             }
@@ -207,7 +219,7 @@ public final class Queues {
                 continue;
             }
             for (Matchmaker.Match match : matchmaker.find(List.copyOf(list), key.size(), key.ranked(), now)) {
-                if (!plugin.arenas().anyFree()) {
+                if (!plugin.arenas().anyFree(key.kit())) {
                     if (now - lastBusyNotice > BUSY_NOTICE_MS) {
                         lastBusyNotice = now;
                         list.forEach(entry -> entry.members().forEach(m -> {
@@ -220,7 +232,9 @@ public final class Queues {
                     break;
                 }
                 match.entries().forEach(entry -> drop(entry, key));
-                if (!plugin.fights().start(key.kit(), key.ranked(), match.teamA(), match.teamB(), false)) {
+                Fights.Request request = new Fights.Request(key.kit(), key.ranked(), Fight.Kind.QUEUE,
+                        List.of(match.teamA(), match.teamB()), null, plugin.kitSettings().rounds(key.kit()));
+                if (!plugin.fights().start(request)) {
                     // Hat nicht geklappt (jemand fehlt): wer noch da ist, wartet weiter.
                     match.entries().forEach(entry -> {
                         if (entry.members().stream().allMatch(m -> plugin.getServer().getPlayer(m) != null)) {

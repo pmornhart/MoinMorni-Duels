@@ -24,8 +24,9 @@ import org.joml.AxisAngle4f;
 import org.joml.Vector3f;
 
 /**
- * Schilder in der Wartehalle (schwebende Schrift): Begrüßung und drei Ranglisten. Jede Schrift gibt es auf Deutsch
- * und Englisch – jeder sieht nur die in seiner Sprache.
+ * Schilder in der Wartehalle (schwebende Schrift): Begrüßung und drei Ranglisten – je Gruppe (Klassisch, Modern, Spaß)
+ * eine, die alle paar Sekunden zur nächsten Kampfart der Gruppe weiterblättert. Jede Schrift gibt es auf Deutsch und
+ * Englisch – jeder sieht nur die in seiner Sprache.
  */
 public final class HallBoards {
 
@@ -38,6 +39,8 @@ public final class HallBoards {
     private final World world;
     private final Map<String, List<TextDisplay>> byLang = new HashMap<>();
     private final Map<String, TextDisplay> tops = new HashMap<>();
+    /** Welche Kampfart jede Gruppe gerade zeigt. */
+    private final Map<Kit.Group, Integer> showing = new HashMap<>();
     private final List<Chunk> held = new ArrayList<>();
 
     public HallBoards(DuelsPlugin plugin, World world) {
@@ -64,11 +67,11 @@ public final class HallBoards {
         for (String lang : LANGS) {
             List<TextDisplay> list = new ArrayList<>();
             list.add(display(at(0.5, 3.4, 8.5), Texts.MM.deserialize(Texts.raw(lang, "board.welcome")), 1.0f));
-            Kit[] kits = Kit.values();
+            Kit.Group[] groups = Kit.Group.values();
             double[] xs = {-9.5, 0.5, 10.5};
-            for (int i = 0; i < kits.length; i++) {
+            for (int i = 0; i < groups.length; i++) {
                 TextDisplay d = display(at(xs[i], 7.6, -17.5), Component.empty(), 1.1f);
-                tops.put(lang + ":" + kits[i].id(), d);
+                tops.put(lang + ":" + groups[i].id(), d);
                 list.add(d);
             }
             byLang.put(lang, list);
@@ -97,15 +100,34 @@ public final class HallBoards {
         });
     }
 
+    /** Jede Gruppe zeigt die nächste (eingeschaltete) Kampfart. */
+    public void rotate() {
+        for (Kit.Group group : Kit.Group.values()) {
+            showing.merge(group, 1, Integer::sum);
+        }
+        update();
+    }
+
+    /** Die Kampfart, die eine Gruppe gerade zeigt. */
+    private Kit shown(Kit.Group group) {
+        List<Kit> kits = group.kits().stream().filter(k -> plugin.kitSettings().on(k)).toList();
+        if (kits.isEmpty()) {
+            return group.kits().get(0);
+        }
+        return kits.get(Math.floorMod(showing.getOrDefault(group, 0), kits.size()));
+    }
+
     /** Ranglisten neu schreiben. */
     public void update() {
         for (String lang : LANGS) {
-            for (Kit kit : Kit.values()) {
-                TextDisplay d = tops.get(lang + ":" + kit.id());
+            for (Kit.Group group : Kit.Group.values()) {
+                TextDisplay d = tops.get(lang + ":" + group.id());
                 if (d == null || !d.isValid()) {
                     continue;
                 }
+                Kit kit = shown(group);
                 Component text = Texts.MM.deserialize(Texts.raw(lang, "board.top"),
+                        Placeholder.unparsed("group", Texts.raw(lang, "group." + group.id())),
                         Placeholder.unparsed("kit", Texts.raw(lang, "kit." + kit.id())));
                 List<Leaderboard.Row> top = plugin.board().top(kit, TOP);
                 if (top.isEmpty()) {
@@ -122,8 +144,11 @@ public final class HallBoards {
         }
     }
 
-    /** Spieler sieht die Schilder in seiner Sprache. */
+    /** Spieler sieht die Schilder in seiner Sprache (beim Abschalten nicht mehr – das ließe Paper nicht zu). */
     public void show(Player p) {
+        if (!plugin.isEnabled()) {
+            return;
+        }
         String lang = plugin.lang(p);
         byLang.forEach((l, list) -> list.forEach(d -> {
             if (!d.isValid()) {
