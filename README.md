@@ -131,7 +131,9 @@ Statistik und Verbindungsabbrüche (rechtzeitig zurück, zu lange weg, 2 gegen 2
 zum Sieg (Sumo gewertet, Boxen, Spleef, Labyrinth mit Ziel und neuem Irrgarten, Brücke mit Toren, UHC mit Wasser,
 Bau-Kampf …), „Bester aus 3“,
 Party gegen Party, Jeder gegen jeden und Zwei Teams (`test/duels-test.cjs`). Pfade und Ports lassen sich per Umgebung ändern
-(siehe Kopf von `test/run.sh`), auch für Paper 26.3 über ViaBackwards (`NO_MOVE=1`).
+(siehe Kopf von `test/run.sh`), auch für Paper 26.3 über ViaBackwards (`NO_MOVE=1`). Auf einem knappen Rechner
+lässt sich der Test teilen: `PART=alt` (alles bis 0.1.3), `PART=neu` (nur die Kampfarten ab 0.2.0), dazu
+`SECTIONS=11-17` (Nummern stehen in der Ausgabe); `XMX=1G COPIES=1` braucht weniger Arbeitsspeicher.
 
 ## Einstellungen
 
